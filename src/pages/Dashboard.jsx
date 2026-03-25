@@ -33,6 +33,7 @@ export default function Dashboard({ session }) {
   const [showModal, setShowModal] = useState(false)
   const [tab, setTab] = useState('link')
   const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
+  const rapidApiKey = import.meta.env.VITE_RAPIDAPI_KEY || ''
   const [form, setForm] = useState({ url:'', title:'', desc:'', thumb:'', type:'post', cat:'', tags:'' })
   const [catInput, setCatInput] = useState('')
   const [toast, setToast] = useState({ show:false, msg:'', type:'ok' })
@@ -141,12 +142,37 @@ export default function Dashboard({ session }) {
     setPrevLoading(true)
     setForm(f => ({ ...f, type, title: `Instagram ${type === 'reel' ? 'Reels' : 'Gönderi'}` }))
     try {
+      // 1. Ücretsiz noembed (Sadece başlık ve resim)
       const r = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}&format=json`)
       const d = await r.json()
       if (d.title) setForm(f => ({ ...f, title: d.title }))
-      const thumb = d.thumbnail_url || `https://www.instagram.com/p/${sc}/media/?size=m`
+      let thumb = d.thumbnail_url || `https://www.instagram.com/p/${sc}/media/?size=m`
       setForm(f => ({ ...f, thumb }))
       setPrevData({ title: d.title || 'Instagram İçeriği', author: d.author_name, type, thumb })
+      
+      // 2. Eğer RapidAPI Key varsa, gerçek açıklamayı çek!
+      if (rapidApiKey) {
+        try {
+          const rr = await fetch(`https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${sc}`, {
+            headers: {
+              'X-RapidAPI-Key': rapidApiKey,
+              'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
+            }
+          })
+          const rd = await rr.json()
+          const caption = rd.data?.caption?.text || ''
+          if (caption) {
+            setForm(f => ({ ...f, desc: caption }))
+            showToast('Açıklama otomatik çekildi!', 'ok')
+          }
+        } catch (apiErr) {
+          console.error("RapidAPI hatası:", apiErr)
+        }
+      } else {
+        // rapidApiKey yoksa uyarı ver
+        showToast('Otomatik açıklama çekmek için RapidAPI Key gerekiyor.', 'warn')
+      }
+      
     } catch (e) {
       setForm(f => ({ ...f, thumb: `https://www.instagram.com/p/${sc}/media/?size=m` }))
       setPrevData({ title: 'Instagram İçeriği', type })
