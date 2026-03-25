@@ -39,6 +39,14 @@ export default function Dashboard({ session }) {
   const [prevData, setPrevData] = useState(null)
   const [prevLoading, setPrevLoading] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
+  
+  const [profile, setProfile] = useState(null)
+  const [showProfile, setShowProfile] = useState(false)
+  const [avatarInput, setAvatarInput] = useState('')
+  const [showAdmin, setShowAdmin] = useState(false)
+  const [allUsers, setAllUsers] = useState([])
+  
+  const [tempNote, setTempNote] = useState('')
   const catInputRef = useRef(null)
   const pvtRef = useRef(null)
 
@@ -55,12 +63,20 @@ export default function Dashboard({ session }) {
 
   async function loadData() {
     const uid = session.user.id
-    const [{ data: c }, { data: i }] = await Promise.all([
+    const [{ data: c }, { data: i }, { data: p }] = await Promise.all([
       supabase.from('categories').select('*').eq('user_id', uid).order('created_at'),
-      supabase.from('items').select('*').eq('user_id', uid).order('created_at', { ascending: false })
+      supabase.from('items').select('*').eq('user_id', uid).order('created_at', { ascending: false }),
+      supabase.from('profiles').select('*').eq('id', uid).single()
     ])
     setCats(c || [])
     setItems(i || [])
+    if (p) {
+      setProfile(p)
+      if (p.is_admin) {
+        const { data: all } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
+        if (all) setAllUsers(all)
+      }
+    }
     setLoading(false)
   }
 
@@ -163,7 +179,19 @@ export default function Dashboard({ session }) {
     setItems(i => i.map(x => x.id === id ? { ...x, _aiLoad: true } : x))
     if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, _aiLoad: true }))
     const cat = cats.find(c => c.id === item?.category_id)
-    const prompt = `Sen profesyonel bir sosyal medya içerik analizcisisin. Aşağıdaki Instagram içeriğini analiz et ve son derece faydalı, detaylı ama yapılandırılmış bir Türkçe özet çıkar.\n\nEğer içerikte bir uygulama, eklenti, web sitesi veya ürün tavsiyesi varsa bunları maddeler halinde "📌 Öneriler" başlığıyla yaz.\nEğer içerikte bir yemek tarifi, adım adım rehber veya eğitim varsa bunları "📝 Detaylar/Tarif" başlığıyla özetle.\nGenel bağlamı ise "💡 Özet" başlığı altında anlat.\n\nSadece bu sonucu ver, ekstra giriş/çıkış cümleleri kullanma.\n\nBaşlık: ${item?.title}\nTür: ${item?.type}\nKategori: ${cat?.name || '-'}\nAçıklama: ${item?.description || '-'}\nEtiketler: ${item?.tags || '-'}`
+    const prompt = `LÜTFEN ALTTAKI "AÇIKLAMA (Description)" KISMINI ÇOK DİKKATLİCE OKU. ANA ÖZETİNİ BU AÇIKLAMA ÜZERİNE KUR.
+
+Sen profesyonel bir bilgi çıkarım asistanısın. Aşağıdaki gönderiyi oku ve aşırı faydalı bir özet çıkar.
+Kurallar:
+1. İçerikte önerilen ürün, eklenti, site veya uygulama varsa kesinlikle "📌 Öneriler" başlığı altında madde madde listele.
+2. Bir yemek tarifi veya adım adım rehber içeriyorsa "📝 Detaylar veya Tarif" başlığında ver.
+3. Diğer genel bilgileri "💡 Ana Özet" başlığında 2 cümle ile ver.
+
+Başlık: ${item?.title}
+Açıklama: ${item?.description || 'Yok'}
+Tür: ${item?.type}
+Etiketler: ${item?.tags || '-'}
+`
     try {
       const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -288,14 +316,31 @@ export default function Dashboard({ session }) {
           </div>
         </div>
 
-        {/* Kullanıcı */}
+        {/* Kullanıcı / Profil */}
         <div style={{ padding:'12px 10px', borderTop:'1px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ fontSize:11, color:'#888899', marginBottom:6, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{session.user.email}</div>
+          <div 
+            onClick={() => { setAvatarInput(profile?.avatar_url || ''); setShowProfile(true); }}
+            style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, padding:6, borderRadius:8, cursor:'pointer', background:'rgba(255,255,255,0.03)' }}>
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt="avatar" style={{ width:28, height:28, borderRadius:'50%', objectFit:'cover' }} />
+            ) : (
+              <div style={{ width:28, height:28, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#f472b6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, color:'#fff' }}>
+                {(session.user.email || 'U')[0].toUpperCase()}
+              </div>
+            )}
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:12, color:'#f0f0f5', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontWeight:500 }}>
+                {session.user.email?.split('@')[0]}
+              </div>
+              <div style={{ fontSize:9, color:'#888899' }}>Profili Düzenle</div>
+            </div>
+          </div>
+          
           <button onClick={() => supabase.auth.signOut()}
-            style={{ width:'100%', padding:'7px 16px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:12, cursor:'pointer' }}>
+            style={{ width:'100%', padding:'6px 16px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:11, cursor:'pointer' }}>
             Çıkış Yap
           </button>
-          <div style={{ marginTop: 20, textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'sans-serif', lineHeight: 1.5 }}>
+          <div style={{ marginTop: 16, textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'sans-serif', lineHeight: 1.5 }}>
             Created by<br/>
             <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 600, letterSpacing: 0.5 }}>Onur Çağlar Çakın</span>
           </div>
@@ -319,6 +364,13 @@ export default function Dashboard({ session }) {
               </button>
             ))}
           </div>
+
+          {profile?.is_admin && (
+            <button onClick={() => setShowAdmin(true)}
+              style={{ padding:'7px 14px', borderRadius:100, border:'1px solid rgba(251,191,36,.3)', background:'rgba(251,191,36,.08)', color:'#fbbf24', fontFamily:'sans-serif', fontSize:12, fontWeight:500, cursor:'pointer' }}>
+              👑 Admin Paneli
+            </button>
+          )}
 
           <button onClick={() => setShowModal(true)}
             style={{ padding:'8px 18px', borderRadius:100, border:'none', background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', fontFamily:'sans-serif', fontSize:13, fontWeight:500, cursor:'pointer' }}>
@@ -370,7 +422,7 @@ export default function Dashboard({ session }) {
                 const proxied = item.thumbnail_url ? `https://images.weserv.nl/?url=${encodeURIComponent(item.thumbnail_url)}&w=400&h=400&fit=cover` : null
                 return (
                   <div key={item.id} className="card"
-                    onClick={() => setSelectedItem(item)}
+                    onClick={() => { setSelectedItem(item); setTempNote(item.notes || ''); }}
                     style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, overflow:'hidden', display: gv === 'list' ? 'flex' : 'block' }}>
                     {/* Thumbnail */}
                     <div style={{ position:'relative', aspectRatio: gv === 'list' ? 'unset' : '1/1', width: gv === 'list' ? 96 : '100%', height: gv === 'list' ? 96 : 'auto', background:'#18181f', flexShrink:0, overflow:'hidden' }}>
@@ -545,16 +597,23 @@ export default function Dashboard({ session }) {
                   </div>
 
                   {/* Notes */}
-                  <div style={{ marginTop:24 }}>
+                  <div style={{ marginTop:24, background:'#18181f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:14 }}>
                     <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.8px', color:'#888899', marginBottom:8, display:'flex', alignItems:'center', gap:5 }}>
                       <span>📝</span> Kişisel Notlar
                     </div>
                     <textarea 
-                      placeholder="Bu içerik hakkında kendi notlarınızı buraya yazın... (Yazıdan çıktığınızda otomatik kaydedilir)"
-                      defaultValue={item.notes || ''}
-                      onBlur={e => { if(e.target.value !== (item.notes||'')) updateNote(item.id, e.target.value) }}
-                      style={{ width:'100%', minHeight:110, background:'#18181f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:'12px 14px', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none', resize:'vertical', lineHeight:1.6 }}
+                      placeholder="Bu içerik hakkında kendi notlarınızı buraya yazın..."
+                      value={tempNote}
+                      onChange={e => setTempNote(e.target.value)}
+                      style={{ width:'100%', minHeight:90, background:'transparent', border:'none', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none', resize:'vertical', lineHeight:1.6, marginBottom:10 }}
                     />
+                    <div style={{ display:'flex', justifyContent:'flex-end' }}>
+                      <button onClick={() => updateNote(item.id, tempNote)}
+                        disabled={tempNote === (item.notes || '')}
+                        style={{ padding:'6px 14px', borderRadius:100, border:'1px solid rgba(168,85,247,.4)', background: tempNote === (item.notes || '') ? 'transparent' : 'rgba(168,85,247,.15)', color: tempNote === (item.notes || '') ? '#888899' : '#c084fc', cursor: tempNote === (item.notes || '') ? 'not-allowed' : 'pointer', fontSize:11, fontWeight:600, transition:'all .2s' }}>
+                        {tempNote === (item.notes || '') ? 'Kaydedildi' : 'Kaydet'}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -678,6 +737,80 @@ export default function Dashboard({ session }) {
       )}
 
 
+
+      {/* PROFILE SETTINGS MODAL */}
+      {showProfile && (
+        <div onClick={e => e.target === e.currentTarget && setShowProfile(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.13)', borderRadius:16, width:400, maxWidth:'95vw', padding:'18px 22px 22px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+              <div style={{ fontSize:15, fontWeight:700 }}>Profil Kişiselleştirme</div>
+              <button onClick={() => setShowProfile(false)} style={{ background:'none', border:'none', color:'#888899', cursor:'pointer', fontSize:17 }}>✕</button>
+            </div>
+            
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
+              {avatarInput ? (
+                <img src={avatarInput} alt="avatar" style={{ width:56, height:56, borderRadius:'50%', objectFit:'cover' }} onError={e => e.target.style.display='none'} />
+              ) : (
+                <div style={{ width:56, height:56, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#f472b6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:700, color:'#fff' }}>
+                  {(session.user.email || 'U')[0].toUpperCase()}
+                </div>
+              )}
+            </div>
+            
+            <label style={{ fontSize:11, color:'#888899', display:'block', marginBottom:5, textTransform:'uppercase', letterSpacing:.5 }}>Profil Fotoğrafı URL</label>
+            <input placeholder="https://resim-url.com/foto.jpg"
+              style={{ width:'100%', background:'#18181f', border:'1px solid rgba(255,255,255,0.13)', borderRadius:8, padding:'9px 11px', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none', marginBottom:16 }}
+              value={avatarInput} onChange={e => setAvatarInput(e.target.value)} />
+            
+            <div style={{ display:'flex', gap:7, justifyContent:'flex-end' }}>
+              <button onClick={() => setShowProfile(false)}
+                style={{ padding:'8px 16px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:13, cursor:'pointer' }}>İptal</button>
+              <button onClick={async () => {
+                const { error } = await supabase.from('profiles').update({ avatar_url: avatarInput }).eq('id', session.user.id)
+                if(!error) { setProfile(p => ({...p, avatar_url: avatarInput})); showToast('Profil güncellendi', 'ok'); setShowProfile(false); }
+                else showToast('Hata: '+error.message, 'err')
+              }}
+                style={{ padding:'8px 18px', borderRadius:100, border:'none', background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', fontFamily:'sans-serif', fontSize:13, fontWeight:500, cursor:'pointer' }}>Kaydet</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADMIN MODAL */}
+      {showAdmin && (
+        <div onClick={e => e.target === e.currentTarget && setShowAdmin(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.13)', borderRadius:16, width:600, maxWidth:'95vw', maxHeight:'80vh', display:'flex', flexDirection:'column' }}>
+            <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+              <div style={{ fontSize:15, fontWeight:700, display:'flex', alignItems:'center', gap:8 }}>👑 Admin Paneli - Gemiye Binenler <span style={{ background:'rgba(251,191,36,.1)', color:'#fbbf24', padding:'2px 8px', borderRadius:100, fontSize:10 }}>{allUsers.length} Üye</span></div>
+              <button onClick={() => setShowAdmin(false)} style={{ background:'none', border:'none', color:'#888899', cursor:'pointer', fontSize:17 }}>✕</button>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'14px 22px 22px' }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {allUsers.map(u => (
+                  <div key={u.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', background:'#18181f', borderRadius:12, border:'1px solid rgba(255,255,255,0.05)' }}>
+                    {u.avatar_url ? (
+                      <img src={u.avatar_url} alt="" style={{ width:38, height:38, borderRadius:'50%', objectFit:'cover' }} />
+                    ) : (
+                      <div style={{ width:38, height:38, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#f472b6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#fff' }}>
+                        {(u.email || 'U')[0].toUpperCase()}
+                      </div>
+                    )}
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:14, fontWeight:500, color:'#f0f0f5', display:'flex', alignItems:'center', gap:6 }}>
+                        {u.email}
+                        {u.is_admin && <span style={{ background:'rgba(251,191,36,.1)', color:'#fbbf24', padding:'1px 6px', borderRadius:100, fontSize:9, fontWeight:700 }}>ADMIN</span>}
+                      </div>
+                      <div style={{ fontSize:10, color:'#888899', marginTop:2 }}>Katılım: {new Date(u.created_at).toLocaleDateString('tr-TR')}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TOAST */}
       {toast.show && (
