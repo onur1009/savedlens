@@ -180,6 +180,7 @@ export default function Dashboard({ session }) {
         })
       })
       const d = await r.json()
+      if (!r.ok) throw new Error(d.error?.message || JSON.stringify(d) || 'API Hatası')
       const summary = d.choices?.[0]?.message?.content || 'Özet alınamadı.'
       await supabase.from('items').update({ ai_summary: summary }).eq('id', id)
       setItems(i => i.map(x => x.id === id ? { ...x, ai_summary: summary, _aiLoad: false } : x))
@@ -288,6 +289,10 @@ export default function Dashboard({ session }) {
             style={{ width:'100%', padding:'7px 16px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:12, cursor:'pointer' }}>
             Çıkış Yap
           </button>
+          <div style={{ marginTop: 20, textAlign: 'center', fontSize: 10, color: 'rgba(255,255,255,0.25)', fontFamily: 'sans-serif', lineHeight: 1.5 }}>
+            Created by<br/>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 600, letterSpacing: 0.5 }}>Onur Çağlar Çakın</span>
+          </div>
         </div>
       </aside>
 
