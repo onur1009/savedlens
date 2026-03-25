@@ -47,8 +47,14 @@ export default function Dashboard({ session }) {
   const [allUsers, setAllUsers] = useState([])
   
   const [tempNote, setTempNote] = useState('')
+  const [chatObj, setChatObj] = useState({ open:false, item:null, messages:[], input:'', loading:false })
+  const chatEndRef = useRef(null)
   const catInputRef = useRef(null)
   const pvtRef = useRef(null)
+
+  useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
+  }, [chatObj.messages, chatObj.open])
 
   useEffect(() => { loadData() }, [])
 
@@ -168,55 +174,46 @@ export default function Dashboard({ session }) {
       setForm({ url:'', title:'', desc:'', thumb:'', type:'post', cat:'', tags:'' })
       setPrevData(null)
       showToast('İçerik eklendi!', 'ok')
-      if (apiKey) genAI(data.id, data)
-      else showToast('AI özet çalışmadı: API Key sunucuda girilmemiş', 'warn')
     }
   }
 
-  // ── OpenRouter AI (mistral-7b-instruct:free) ──────────────────────────────
-  async function genAI(id, item) {
-    if (!apiKey) { showToast('API key Vercel tarafında ayarlanmamış!', 'err'); return }
-    setItems(i => i.map(x => x.id === id ? { ...x, _aiLoad: true } : x))
-    if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, _aiLoad: true }))
+  // ── OpenRouter AI Chat ──────────────────────────────
+  async function handleSendChatMessage() {
+    const { input, item, messages } = chatObj
+    if (!input.trim() || !apiKey) return
+    const userMsg = { role: 'user', content: input.trim() }
+    setChatObj(c => ({ ...c, messages: [...c.messages, userMsg], input: '', loading: true }))
+    
     const cat = cats.find(c => c.id === item?.category_id)
-    const prompt = `LÜTFEN ALTTAKI "AÇIKLAMA (Description)" KISMINI ÇOK DİKKATLİCE OKU. ANA ÖZETİNİ BU AÇIKLAMA ÜZERİNE KUR.
-
-Sen profesyonel bir bilgi çıkarım asistanısın. Aşağıdaki gönderiyi oku ve aşırı faydalı bir özet çıkar.
-Kurallar:
-1. İçerikte önerilen ürün, eklenti, site veya uygulama varsa kesinlikle "📌 Öneriler" başlığı altında madde madde listele.
-2. Bir yemek tarifi veya adım adım rehber içeriyorsa "📝 Detaylar veya Tarif" başlığında ver.
-3. Diğer genel bilgileri "💡 Ana Özet" başlığında 2 cümle ile ver.
-
-Başlık: ${item?.title}
+    const sysPrompt = `Sen harika bir bakış açısına sahip, yetenekli bir asistansın. Kullanıcı sana aşağıdaki kaydettiği Instagram gönderisi ile ilgili sorular soracak. 
+Gönderi Başlığı: ${item?.title || 'Yok'}
 Açıklama: ${item?.description || 'Yok'}
-Tür: ${item?.type}
-Etiketler: ${item?.tags || '-'}
-`
+Tür: ${item?.type || 'Yok'}
+Kategori: ${cat?.name || 'Yok'}
+Etiketler: ${item?.tags || 'Yok'}
+Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığı yapmadan harika bir Türkçe ile yanıtla.`
+
     try {
       const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'SavedLens'
+          'HTTP-Referer': window.location.origin
         },
         body: JSON.stringify({
           model: 'openrouter/free',
           max_tokens: 800,
-          messages: [{ role: 'user', content: prompt }]
+          messages: [{ role: 'system', content: sysPrompt }, ...messages, userMsg]
         })
       })
       const d = await r.json()
-      if (!r.ok) throw new Error(d.error?.message || JSON.stringify(d) || 'API Hatası')
-      const summary = d.choices?.[0]?.message?.content || 'Özet alınamadı.'
-      await supabase.from('items').update({ ai_summary: summary }).eq('id', id)
-      setItems(i => i.map(x => x.id === id ? { ...x, ai_summary: summary, _aiLoad: false } : x))
-      if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, ai_summary: summary, _aiLoad: false }))
+      if (!r.ok) throw new Error(d.error?.message || 'API Hatası')
+      const reply = d.choices?.[0]?.message?.content || 'Yanıt alınamadı.'
+      setChatObj(c => ({ ...c, messages: [...c.messages, { role: 'assistant', content: reply }], loading: false }))
     } catch (e) {
-      setItems(i => i.map(x => x.id === id ? { ...x, _aiLoad: false } : x))
-      if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, _aiLoad: false }))
       showToast('AI hatası: ' + e.message, 'err')
+      setChatObj(c => ({ ...c, loading: false }))
     }
   }
 
@@ -431,7 +428,7 @@ Etiketler: ${item?.tags || '-'}
                         : <div style={{ width:'100%', height:'100%', minHeight:100, display:'flex', alignItems:'center', justifyContent:'center', fontSize:28, color:'#888899' }}>{item.type === 'reel' ? '🎬' : '🖼️'}</div>
                       }
                       <div style={{ position:'absolute', top:7, left:7, padding:'2px 7px', borderRadius:100, fontSize:9, fontWeight:600, background:tc, color:'#f0f0f5', textTransform:'uppercase', letterSpacing:.5 }}>{tl}</div>
-                      {item.ai_summary && <div style={{ position:'absolute', top:7, right:7, width:22, height:22, borderRadius:'50%', background:'rgba(0,0,0,.6)', border:'1px solid rgba(192,132,252,.4)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10 }}>✨</div>}
+                      {/* item.ai_summary kaldırıldı. ✨ ikonu gizlendi */}
                     </div>
 
                     {/* Body */}
@@ -450,21 +447,12 @@ Etiketler: ${item?.tags || '-'}
                         </div>
                       )}
 
-                      {/* AI */}
+                      {/* AI Chat Button */}
                       <div style={{ borderTop:'1px solid rgba(255,255,255,0.07)', marginTop:9, paddingTop:9 }}>
-                        {item.ai_summary ? (
-                          <>
-                            <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.8px', color:'#a855f7', marginBottom:3 }}>✨ AI Özet</div>
-                            <div style={{ fontSize:11, color:'#888899', lineHeight:1.6 }}>{item.ai_summary}</div>
-                          </>
-                        ) : item._aiLoad ? (
-                          <div style={{ fontSize:11, color:'#888899', display:'flex', alignItems:'center', gap:5 }}>
-                            <div style={{ width:11, height:11, border:'1.5px solid rgba(255,255,255,0.13)', borderTopColor:'#a855f7', borderRadius:'50%', animation:'spin .8s linear infinite', flexShrink:0 }}></div>
-                            Özet oluşturuluyor...
-                          </div>
-                        ) : (
-                          <button onClick={e => { e.stopPropagation(); genAI(item.id, item) }} style={{ fontSize:11, color:'#a855f7', background:'none', border:'none', cursor:'pointer', padding:0 }}>✨ AI Özet Oluştur</button>
-                        )}
+                        <button onClick={e => { e.stopPropagation(); setChatObj({ open:true, item, messages:[], input:'', loading:false }) }}
+                          style={{ width:'100%', padding:'7px', borderRadius:8, border:'1px solid rgba(168,85,247,0.3)', background:'rgba(168,85,247,0.08)', color:'#c084fc', cursor:'pointer', fontSize:11, fontWeight:600, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                          🤖 AI'a Sor
+                        </button>
                       </div>
 
                       {/* Footer */}
@@ -574,26 +562,12 @@ Etiketler: ${item?.tags || '-'}
                     </div>
                   )}
 
-                  {/* AI Summary */}
-                  <div style={{ background:'rgba(168,85,247,.06)', border:'1px solid rgba(168,85,247,.15)', borderRadius:12, padding:'12px 14px', marginBottom:4 }}>
-                    {item.ai_summary ? (
-                      <>
-                        <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.8px', color:'#a855f7', marginBottom:6, display:'flex', alignItems:'center', gap:5 }}>
-                          <span>✨</span> AI Özet
-                        </div>
-                        <div style={{ fontSize:12, color:'#c0c0cc', lineHeight:1.8 }}>{item.ai_summary}</div>
-                      </>
-                    ) : item._aiLoad ? (
-                      <div style={{ fontSize:12, color:'#888899', display:'flex', alignItems:'center', gap:8 }}>
-                        <div style={{ width:12, height:12, border:'1.5px solid rgba(255,255,255,0.13)', borderTopColor:'#a855f7', borderRadius:'50%', animation:'spin .8s linear infinite', flexShrink:0 }}></div>
-                        AI özet oluşturuluyor...
-                      </div>
-                    ) : (
-                      <button onClick={() => genAI(item.id, item)}
-                        style={{ fontSize:12, color:'#a855f7', background:'none', border:'none', cursor:'pointer', padding:0, display:'flex', alignItems:'center', gap:6 }}>
-                        ✨ AI Özet Oluştur
-                      </button>
-                    )}
+                  {/* AI Chat Feature */}
+                  <div style={{ marginTop:24 }}>
+                    <button onClick={() => { setChatObj({ open:true, item, messages:[], input:'', loading:false }); setSelectedItem(null); }}
+                      style={{ width:'100%', padding:'12px', borderRadius:12, border:'1px solid rgba(168,85,247,0.3)', background:'rgba(168,85,247,0.08)', color:'#c084fc', fontFamily:'sans-serif', fontSize:13, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                      🤖 Bu İçerik Hakkında AI ile Sohbet Et
+                    </button>
                   </div>
 
                   {/* Notes */}
@@ -737,6 +711,57 @@ Etiketler: ${item?.tags || '-'}
       )}
 
 
+
+      {/* AI CHAT MODAL */}
+      {chatObj.open && (
+        <div onClick={e => e.target === e.currentTarget && setChatObj(c => ({ ...c, open:false }))}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)', zIndex:400, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+          <div style={{ background:'#111118', border:'1px solid rgba(168,85,247,0.2)', borderRadius:16, width:500, maxWidth:'95vw', height:'85vh', display:'flex', flexDirection:'column', boxShadow:'0 32px 80px rgba(0,0,0,.7)' }}>
+            <div style={{ padding:'16px 20px', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+              <div style={{ width:34, height:34, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#f472b6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>🤖</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:15, fontWeight:700, color:'#f0f0f5' }}>AI Asistan</div>
+                <div style={{ fontSize:10, color:'#888899', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{chatObj.item?.title || 'Instagram İçeriği'}</div>
+              </div>
+              <button onClick={() => setChatObj(c => ({ ...c, open:false }))} style={{ background:'none', border:'none', color:'#888899', cursor:'pointer', fontSize:17 }}>✕</button>
+            </div>
+            
+            <div style={{ flex:1, overflowY:'auto', padding:'20px', display:'flex', flexDirection:'column', gap:12 }}>
+              <div style={{ background:'rgba(168,85,247,.08)', border:'1px solid rgba(168,85,247,.2)', borderRadius:12, padding:'12px 14px', fontSize:13, color:'#c084fc', alignSelf:'center', textAlign:'center', maxWidth:'85%' }}>
+                Merhaba! Bu gönderi hakkında bana her şeyi sorabilirsin. Örneğin: "Buradaki tarifi 2 kişilik yap" veya "Uygulama isimlerini listele."
+              </div>
+              {chatObj.messages.map((m, i) => (
+                <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', background: m.role === 'user' ? '#22222c' : '#18181f', border:`1px solid ${m.role === 'user' ? 'rgba(255,255,255,0.1)' : 'rgba(168,85,247,0.15)'}`, borderRadius:12, padding:'10px 14px', fontSize:13, color:'#f0f0f5', maxWidth:'85%', lineHeight:1.5, whiteSpace:'pre-wrap' }}>
+                  {m.content}
+                </div>
+              ))}
+              {chatObj.loading && (
+                <div style={{ alignSelf:'flex-start', background:'#18181f', border:'1px solid rgba(168,85,247,0.15)', borderRadius:12, padding:'10px 14px', fontSize:13, color:'#888899', display:'flex', alignItems:'center', gap:8 }}>
+                  <div style={{ width:12, height:12, border:'1.5px solid rgba(168,85,247,0.3)', borderTopColor:'#a855f7', borderRadius:'50%', animation:'spin .8s linear infinite' }}></div>
+                  AI yazıyor...
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            
+            <div style={{ padding:'14px 20px', borderTop:'1px solid rgba(255,255,255,0.07)', display:'flex', gap:10, flexShrink:0 }}>
+              <input 
+                placeholder="Bir soru sor..."
+                value={chatObj.input}
+                onChange={e => setChatObj(c => ({ ...c, input: e.target.value }))}
+                onKeyDown={e => { if(e.key === 'Enter') handleSendChatMessage() }}
+                style={{ flex:1, background:'#18181f', border:'1px solid rgba(255,255,255,0.13)', borderRadius:100, padding:'10px 16px', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none' }}
+              />
+              <button 
+                onClick={handleSendChatMessage}
+                disabled={chatObj.loading || !chatObj.input.trim()}
+                style={{ width:40, height:40, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#7c3aed)', border:'none', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', cursor: (chatObj.loading || !chatObj.input.trim()) ? 'not-allowed' : 'pointer', opacity: (chatObj.loading || !chatObj.input.trim()) ? 0.5 : 1 }}>
+                ➤
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PROFILE SETTINGS MODAL */}
       {showProfile && (
