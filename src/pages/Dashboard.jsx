@@ -174,7 +174,7 @@ export default function Dashboard({ session }) {
           'X-Title': 'SavedLens'
         },
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          model: 'mistralai/mistral-7b-instruct:free',
           max_tokens: 200,
           messages: [{ role: 'user', content: prompt }]
         })
