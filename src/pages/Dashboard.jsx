@@ -149,21 +149,24 @@ export default function Dashboard({ session }) {
       let thumb = d.thumbnail_url || `https://www.instagram.com/p/${sc}/media/?size=m`
       setForm(f => ({ ...f, thumb }))
       setPrevData({ title: d.title || 'Instagram İçeriği', author: d.author_name, type, thumb })
-      
-      // 2. Eğer RapidAPI Key varsa, gerçek açıklamayı çek!
-      if (rapidApiKey) {
-        try {
-          const rr = await fetch(`https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${sc}`, {
-            headers: {
-              'X-RapidAPI-Key': rapidApiKey,
-              'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
-            }
-          })
-          const rd = await rr.json()
-          if (!rr.ok) {
-            showToast('RapidAPI Hatası: ' + (rd.message || 'Yetkisiz erişim'), 'err')
-            return
+    } catch (e) {
+      setForm(f => ({ ...f, thumb: `https://www.instagram.com/p/${sc}/media/?size=m` }))
+      setPrevData({ title: 'Instagram İçeriği', type })
+    }
+
+    // 2. Eğer RapidAPI Key varsa, gerçek açıklamayı çek!
+    if (rapidApiKey) {
+      try {
+        const rr = await fetch(`https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=${sc}`, {
+          headers: {
+            'X-RapidAPI-Key': rapidApiKey,
+            'X-RapidAPI-Host': 'instagram-scraper-api2.p.rapidapi.com'
           }
+        })
+        const rd = await rr.json()
+        if (!rr.ok) {
+          showToast('RapidAPI Hatası: ' + (rd.message || 'Yetkisiz erişim'), 'err')
+        } else {
           const caption = rd.data?.caption?.text || ''
           if (caption) {
             setForm(f => ({ ...f, desc: caption }))
@@ -171,19 +174,16 @@ export default function Dashboard({ session }) {
           } else {
             showToast('RapidAPI: Bu gönderide metin bulunamadı.', 'warn')
           }
-        } catch (apiErr) {
-          console.error("RapidAPI hatası:", apiErr)
-          showToast('RapidAPI bağlantı hatası!', 'err')
         }
-      } else {
-        // rapidApiKey yoksa uyarı ver
-        showToast('Otomatik açıklama çekmek için RapidAPI Key gerekiyor.', 'warn')
+      } catch (apiErr) {
+        console.error("RapidAPI hatası:", apiErr)
+        showToast('RapidAPI bağlantı hatası!', 'err')
       }
-      
-    } catch (e) {
-      setForm(f => ({ ...f, thumb: `https://www.instagram.com/p/${sc}/media/?size=m` }))
-      setPrevData({ title: 'Instagram İçeriği', type })
+    } else {
+      // rapidApiKey yoksa uyarı ver
+      showToast('Otomatik açıklama çekmek için RapidAPI Key gerekiyor.', 'warn')
     }
+
     setPrevLoading(false)
   }
 
