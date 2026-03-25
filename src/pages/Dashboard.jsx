@@ -5,9 +5,10 @@ const PAL = ['#c084fc','#f472b6','#2dd4bf','#fbbf24','#4ade80','#f87171','#60a5f
 
 const css = `
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
   * { box-sizing: border-box; }
   .card:hover { border-color: rgba(255,255,255,0.15) !important; transform: translateY(-2px); }
-  .card { transition: all .2s; }
+  .card { transition: all .2s; cursor: pointer; }
   .actbtn { opacity: 0; transition: opacity .15s; }
   .card:hover .actbtn { opacity: 1; }
   .catdel { opacity: 0; transition: opacity .15s; }
@@ -16,6 +17,8 @@ const css = `
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-thumb { background: #22222c; border-radius: 10px; }
   select option { background: #18181f; }
+  .detail-panel { animation: fadeIn .18s ease; }
+  .ig-desc { white-space: pre-wrap; word-break: break-word; }
 `
 
 export default function Dashboard({ session }) {
@@ -28,20 +31,27 @@ export default function Dashboard({ session }) {
   const [search, setSearch] = useState('')
   const [tf, setTf] = useState('all')
   const [showModal, setShowModal] = useState(false)
-  const [showAIModal, setShowAIModal] = useState(false)
   const [tab, setTab] = useState('link')
-  const [apiKey, setApiKey] = useState(localStorage.getItem('sl_apikey') || '')
-  const [apiKeyInput, setApiKeyInput] = useState('')
-  const [aiStatus, setAiStatus] = useState('')
+  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
   const [form, setForm] = useState({ url:'', title:'', desc:'', thumb:'', type:'post', cat:'', tags:'' })
   const [catInput, setCatInput] = useState('')
   const [toast, setToast] = useState({ show:false, msg:'', type:'ok' })
   const [prevData, setPrevData] = useState(null)
   const [prevLoading, setPrevLoading] = useState(false)
+  const [selectedItem, setSelectedItem] = useState(null)
   const catInputRef = useRef(null)
   const pvtRef = useRef(null)
 
   useEffect(() => { loadData() }, [])
+
+  // ESC closes detail popup
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === 'Escape') setSelectedItem(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   async function loadData() {
     const uid = session.user.id
@@ -84,12 +94,14 @@ export default function Dashboard({ session }) {
   async function toggleFav(id, val) {
     await supabase.from('items').update({ is_favorite: !val }).eq('id', id)
     setItems(i => i.map(x => x.id === id ? { ...x, is_favorite: !val } : x))
+    if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, is_favorite: !val }))
   }
 
   async function delItem(id) {
     if (!window.confirm('Bu içeriği silmek istiyor musun?')) return
     await supabase.from('items').delete().eq('id', id)
     setItems(i => i.filter(x => x.id !== id))
+    if (selectedItem?.id === id) setSelectedItem(null)
     showToast('Silindi', 'ok')
   }
 
@@ -141,68 +153,45 @@ export default function Dashboard({ session }) {
       setPrevData(null)
       showToast('İçerik eklendi!', 'ok')
       if (apiKey) genAI(data.id, data)
-      else showToast('AI özet için "🤖 AI Ayarları" butonundan key gir', 'warn')
+      else showToast('AI özet çalışmadı: API Key sunucuda girilmemiş', 'warn')
     }
   }
 
+  // ── OpenRouter AI (mistral-7b-instruct:free) ──────────────────────────────
   async function genAI(id, item) {
-    if (!apiKey) { setShowAIModal(true); return }
+    if (!apiKey) { showToast('API key Vercel tarafında ayarlanmamış!', 'err'); return }
     setItems(i => i.map(x => x.id === id ? { ...x, _aiLoad: true } : x))
+    if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, _aiLoad: true }))
     const cat = cats.find(c => c.id === item?.category_id)
     const prompt = `Sen bir sosyal medya içerik analizcisisin. Aşağıdaki Instagram içeriği hakkında 2-3 cümlelik kısa Türkçe özet yaz. Sadece özet metnini yaz.\n\nBaşlık: ${item?.title}\nTür: ${item?.type}\nKategori: ${cat?.name || '-'}\nAçıklama: ${item?.description || '-'}\nEtiketler: ${item?.tags || '-'}`
     try {
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
+      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
+          'Authorization': `Bearer ${apiKey}`,
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'SavedLens'
         },
         body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
+          model: 'meta-llama/llama-3.1-8b-instruct:free',
           max_tokens: 200,
           messages: [{ role: 'user', content: prompt }]
         })
       })
       const d = await r.json()
-      const summary = d.content?.[0]?.text || 'Özet alınamadı.'
+      const summary = d.choices?.[0]?.message?.content || 'Özet alınamadı.'
       await supabase.from('items').update({ ai_summary: summary }).eq('id', id)
       setItems(i => i.map(x => x.id === id ? { ...x, ai_summary: summary, _aiLoad: false } : x))
+      if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, ai_summary: summary, _aiLoad: false }))
     } catch (e) {
       setItems(i => i.map(x => x.id === id ? { ...x, _aiLoad: false } : x))
+      if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, _aiLoad: false }))
       showToast('AI hatası: ' + e.message, 'err')
     }
   }
 
-  async function saveAPIKey() {
-    if (!apiKeyInput.startsWith('sk-ant')) { showToast('Geçersiz format. sk-ant- ile başlamalı', 'err'); return }
-    setAiStatus('Test ediliyor...')
-    try {
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKeyInput,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 10, messages: [{ role: 'user', content: 'merhaba' }] })
-      })
-      if (r.ok) {
-        setApiKey(apiKeyInput)
-        localStorage.setItem('sl_apikey', apiKeyInput)
-        setAiStatus('✅ Bağlantı başarılı!')
-        showToast('API key kaydedildi!', 'ok')
-        setTimeout(() => setShowAIModal(false), 1200)
-      } else {
-        const e = await r.json()
-        setAiStatus('❌ ' + (e.error?.message || 'Hata'))
-      }
-    } catch (e) {
-      setAiStatus('❌ Bağlantı hatası: ' + e.message)
-    }
-  }
+
 
   function filtered() {
     let it = [...items]
@@ -226,10 +215,6 @@ export default function Dashboard({ session }) {
   )
 
   const it = filtered()
-
-  const inp = (placeholder, value, onChange, extra = {}) => (
-    <input style={{ width:'100%', background:'#18181f', border:'1px solid rgba(255,255,255,0.13)', borderRadius:8, padding:'9px 11px', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none', ...extra }} placeholder={placeholder} value={value} onChange={onChange} />
-  )
 
   return (
     <div style={{ fontFamily:'sans-serif' }}>
@@ -323,10 +308,7 @@ export default function Dashboard({ session }) {
               </button>
             ))}
           </div>
-          <button onClick={() => setShowAIModal(true)}
-            style={{ padding:'7px 13px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:12, cursor:'pointer' }}>
-            🤖 AI Ayarları
-          </button>
+
           <button onClick={() => setShowModal(true)}
             style={{ padding:'8px 18px', borderRadius:100, border:'none', background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', fontFamily:'sans-serif', fontSize:13, fontWeight:500, cursor:'pointer' }}>
             + İçerik Ekle
@@ -376,7 +358,9 @@ export default function Dashboard({ session }) {
                 const tc = item.type === 'reel' ? 'rgba(244,114,182,.22)' : item.type === 'carousel' ? 'rgba(45,212,191,.18)' : 'rgba(192,132,252,.22)'
                 const proxied = item.thumbnail_url ? `https://images.weserv.nl/?url=${encodeURIComponent(item.thumbnail_url)}&w=400&h=400&fit=cover` : null
                 return (
-                  <div key={item.id} className="card" style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, overflow:'hidden', display: gv === 'list' ? 'flex' : 'block' }}>
+                  <div key={item.id} className="card"
+                    onClick={() => setSelectedItem(item)}
+                    style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.07)', borderRadius:12, overflow:'hidden', display: gv === 'list' ? 'flex' : 'block' }}>
                     {/* Thumbnail */}
                     <div style={{ position:'relative', aspectRatio: gv === 'list' ? 'unset' : '1/1', width: gv === 'list' ? 96 : '100%', height: gv === 'list' ? 96 : 'auto', background:'#18181f', flexShrink:0, overflow:'hidden' }}>
                       {proxied
@@ -416,7 +400,7 @@ export default function Dashboard({ session }) {
                             Özet oluşturuluyor...
                           </div>
                         ) : (
-                          <button onClick={() => genAI(item.id, item)} style={{ fontSize:11, color:'#a855f7', background:'none', border:'none', cursor:'pointer', padding:0 }}>✨ AI Özet Oluştur</button>
+                          <button onClick={e => { e.stopPropagation(); genAI(item.id, item) }} style={{ fontSize:11, color:'#a855f7', background:'none', border:'none', cursor:'pointer', padding:0 }}>✨ AI Özet Oluştur</button>
                         )}
                       </div>
 
@@ -424,15 +408,15 @@ export default function Dashboard({ session }) {
                       <div style={{ display:'flex', alignItems:'center', gap:7, marginTop:9 }}>
                         <span style={{ fontSize:10, color:'#888899' }}>{new Date(item.created_at).toLocaleDateString('tr-TR')}</span>
                         <div className="actbtn" style={{ marginLeft:'auto', display:'flex', gap:3 }}>
-                          <button onClick={() => toggleFav(item.id, item.is_favorite)}
+                          <button onClick={e => { e.stopPropagation(); toggleFav(item.id, item.is_favorite) }}
                             style={{ width:24, height:24, borderRadius:6, border:'1px solid rgba(255,255,255,0.13)', background:'#18181f', color:'#888899', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>
                             {item.is_favorite ? '⭐' : '☆'}
                           </button>
                           {item.instagram_url && (
-                            <button onClick={() => window.open(item.instagram_url, '_blank')}
+                            <button onClick={e => { e.stopPropagation(); window.open(item.instagram_url, '_blank') }}
                               style={{ width:24, height:24, borderRadius:6, border:'1px solid rgba(255,255,255,0.13)', background:'#18181f', color:'#888899', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>↗</button>
                           )}
-                          <button onClick={() => delItem(item.id)}
+                          <button onClick={e => { e.stopPropagation(); delItem(item.id) }}
                             style={{ width:24, height:24, borderRadius:6, border:'1px solid rgba(255,255,255,0.13)', background:'#18181f', color:'#f87171', cursor:'pointer', fontSize:11, display:'flex', alignItems:'center', justifyContent:'center' }}>🗑</button>
                         </div>
                       </div>
@@ -444,6 +428,136 @@ export default function Dashboard({ session }) {
           )}
         </div>
       </main>
+
+      {/* ── INSTAGRAM-STYLE DETAIL POPUP ─────────────────────────────────────── */}
+      {selectedItem && (() => {
+        const item = selectedItem
+        const cat = cats.find(c => c.id === item.category_id)
+        const tl = item.type === 'reel' ? 'Reels' : item.type === 'carousel' ? 'Carousel' : 'Gönderi'
+        const tc = item.type === 'reel' ? '#f472b6' : item.type === 'carousel' ? '#2dd4bf' : '#c084fc'
+        const proxied = item.thumbnail_url ? `https://images.weserv.nl/?url=${encodeURIComponent(item.thumbnail_url)}&w=900&h=900&fit=cover` : null
+        const avatarLetter = (session.user.email || 'U')[0].toUpperCase()
+        return (
+          <div
+            onClick={e => e.target === e.currentTarget && setSelectedItem(null)}
+            style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.82)', backdropFilter:'blur(10px)', zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+            <div className="detail-panel" style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.1)', borderRadius:18, width:'min(900px,95vw)', maxHeight:'92vh', display:'flex', overflow:'hidden', boxShadow:'0 32px 80px rgba(0,0,0,.7)' }}>
+
+              {/* LEFT — Image */}
+              <div style={{ width:'50%', background:'#0a0a0f', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', minHeight:400 }}>
+                {proxied
+                  ? <img src={proxied} alt="" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} onError={e => e.target.style.opacity = '0'} />
+                  : <div style={{ fontSize:64, opacity:.18 }}>{item.type === 'reel' ? '🎬' : '🖼️'}</div>
+                }
+              </div>
+
+              {/* RIGHT — Detail */}
+              <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
+
+                {/* Header */}
+                <div style={{ padding:'16px 18px', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:11, flexShrink:0 }}>
+                  <div style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#a855f7,#f472b6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>
+                    {avatarLetter}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:600, color:'#f0f0f5', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {session.user.email?.split('@')[0]}
+                    </div>
+                    <div style={{ fontSize:10, color:'#888899' }}>
+                      {new Date(item.created_at).toLocaleDateString('tr-TR', { year:'numeric', month:'long', day:'numeric' })}
+                    </div>
+                  </div>
+                  {/* Type badge */}
+                  <div style={{ padding:'3px 10px', borderRadius:100, fontSize:9, fontWeight:700, background:`${tc}22`, color:tc, textTransform:'uppercase', letterSpacing:.6, border:`1px solid ${tc}44`, flexShrink:0 }}>
+                    {tl}
+                  </div>
+                  <button onClick={() => setSelectedItem(null)}
+                    style={{ width:28, height:28, borderRadius:'50%', border:'1px solid rgba(255,255,255,0.13)', background:'#18181f', color:'#888899', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>✕</button>
+                </div>
+
+                {/* Scrollable content */}
+                <div style={{ flex:1, overflowY:'auto', padding:'16px 18px' }}>
+
+                  {/* Category */}
+                  {cat && (
+                    <div style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', background:'#18181f', borderRadius:100, fontSize:10, color:'#888899', marginBottom:12, border:'1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ width:6, height:6, borderRadius:'50%', background:cat.color }}></div>
+                      {cat.name}
+                    </div>
+                  )}
+
+                  {/* Title */}
+                  {item.title && (
+                    <div style={{ fontSize:15, fontWeight:600, color:'#f0f0f5', lineHeight:1.5, marginBottom:10 }}>
+                      {item.title}
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {item.description && (
+                    <div className="ig-desc" style={{ fontSize:13, color:'#c0c0cc', lineHeight:1.8, marginBottom:14 }}>
+                      {item.description}
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {item.tags && (
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:14 }}>
+                      {item.tags.split(',').map(t => (
+                        <span key={t} style={{ padding:'3px 10px', background:'rgba(168,85,247,.1)', border:'1px solid rgba(168,85,247,.2)', borderRadius:100, fontSize:10, color:'#a855f7' }}>
+                          #{t.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* AI Summary */}
+                  <div style={{ background:'rgba(168,85,247,.06)', border:'1px solid rgba(168,85,247,.15)', borderRadius:12, padding:'12px 14px', marginBottom:4 }}>
+                    {item.ai_summary ? (
+                      <>
+                        <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'.8px', color:'#a855f7', marginBottom:6, display:'flex', alignItems:'center', gap:5 }}>
+                          <span>✨</span> AI Özet
+                        </div>
+                        <div style={{ fontSize:12, color:'#c0c0cc', lineHeight:1.8 }}>{item.ai_summary}</div>
+                      </>
+                    ) : item._aiLoad ? (
+                      <div style={{ fontSize:12, color:'#888899', display:'flex', alignItems:'center', gap:8 }}>
+                        <div style={{ width:12, height:12, border:'1.5px solid rgba(255,255,255,0.13)', borderTopColor:'#a855f7', borderRadius:'50%', animation:'spin .8s linear infinite', flexShrink:0 }}></div>
+                        AI özet oluşturuluyor...
+                      </div>
+                    ) : (
+                      <button onClick={() => genAI(item.id, item)}
+                        style={{ fontSize:12, color:'#a855f7', background:'none', border:'none', cursor:'pointer', padding:0, display:'flex', alignItems:'center', gap:6 }}>
+                        ✨ AI Özet Oluştur
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Actions footer */}
+                <div style={{ padding:'12px 18px', borderTop:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                  <button onClick={() => toggleFav(item.id, item.is_favorite)}
+                    style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:100, border:'1px solid rgba(255,255,255,0.13)', background: item.is_favorite ? 'rgba(251,191,36,.1)' : '#18181f', color: item.is_favorite ? '#fbbf24' : '#888899', fontFamily:'sans-serif', fontSize:12, cursor:'pointer' }}>
+                    {item.is_favorite ? '⭐' : '☆'} {item.is_favorite ? 'Favoride' : 'Favori'}
+                  </button>
+                  {item.instagram_url && (
+                    <button onClick={() => window.open(item.instagram_url, '_blank')}
+                      style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:100, border:'1px solid rgba(255,255,255,0.13)', background:'#18181f', color:'#888899', fontFamily:'sans-serif', fontSize:12, cursor:'pointer' }}>
+                      ↗ Instagram'da Aç
+                    </button>
+                  )}
+                  <div style={{ marginLeft:'auto' }}>
+                    <button onClick={() => delItem(item.id)}
+                      style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', borderRadius:100, border:'1px solid rgba(248,113,113,.3)', background:'rgba(248,113,113,.08)', color:'#f87171', fontFamily:'sans-serif', fontSize:12, cursor:'pointer' }}>
+                      🗑 Sil
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ADD MODAL */}
       {showModal && (
@@ -539,33 +653,7 @@ export default function Dashboard({ session }) {
         </div>
       )}
 
-      {/* AI MODAL */}
-      {showAIModal && (
-        <div onClick={e => e.target === e.currentTarget && setShowAIModal(false)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.72)', backdropFilter:'blur(6px)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <div style={{ background:'#111118', border:'1px solid rgba(255,255,255,0.13)', borderRadius:16, width:440, maxWidth:'95vw', padding:'18px 22px 22px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-              <div style={{ fontSize:15, fontWeight:700 }}>🤖 AI Özet Ayarları</div>
-              <button onClick={() => setShowAIModal(false)} style={{ background:'none', border:'none', color:'#888899', cursor:'pointer', fontSize:17 }}>✕</button>
-            </div>
-            <div style={{ background:'rgba(251,191,36,.06)', border:'1px solid rgba(251,191,36,.2)', borderRadius:8, padding:'10px 12px', fontSize:11, color:'rgba(251,191,36,.85)', lineHeight:1.6, marginBottom:14 }}>
-              <strong style={{ color:'#fbbf24' }}>Anthropic API key gerekli.</strong><br />
-              console.anthropic.com adresinden ücretsiz key alabilirsin. Key sadece tarayıcında saklanır.
-            </div>
-            <label style={{ fontSize:11, color:'#888899', display:'block', marginBottom:5, textTransform:'uppercase', letterSpacing:.5 }}>API Key</label>
-            <input type="password" placeholder="sk-ant-api03-..."
-              style={{ width:'100%', background:'#18181f', border:'1px solid rgba(255,255,255,0.13)', borderRadius:8, padding:'9px 11px', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none', marginBottom:6 }}
-              value={apiKeyInput} onChange={e => setApiKeyInput(e.target.value)} />
-            {aiStatus && <div style={{ fontSize:11, color:'#888899', marginBottom:10 }}>{aiStatus}</div>}
-            <div style={{ display:'flex', gap:7, justifyContent:'flex-end', marginTop:16 }}>
-              <button onClick={() => setShowAIModal(false)}
-                style={{ padding:'8px 16px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:13, cursor:'pointer' }}>İptal</button>
-              <button onClick={saveAPIKey}
-                style={{ padding:'8px 18px', borderRadius:100, border:'none', background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', fontFamily:'sans-serif', fontSize:13, fontWeight:500, cursor:'pointer' }}>Kaydet & Test Et</button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* TOAST */}
       {toast.show && (
