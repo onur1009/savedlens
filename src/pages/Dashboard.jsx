@@ -160,13 +160,20 @@ export default function Dashboard({ session }) {
             }
           })
           const rd = await rr.json()
+          if (!rr.ok) {
+            showToast('RapidAPI Hatası: ' + (rd.message || 'Yetkisiz erişim'), 'err')
+            return
+          }
           const caption = rd.data?.caption?.text || ''
           if (caption) {
             setForm(f => ({ ...f, desc: caption }))
             showToast('Açıklama otomatik çekildi!', 'ok')
+          } else {
+            showToast('RapidAPI: Bu gönderide metin bulunamadı.', 'warn')
           }
         } catch (apiErr) {
           console.error("RapidAPI hatası:", apiErr)
+          showToast('RapidAPI bağlantı hatası!', 'err')
         }
       } else {
         // rapidApiKey yoksa uyarı ver
