@@ -174,7 +174,7 @@ export default function Dashboard({ session }) {
           'X-Title': 'SavedLens'
         },
         body: JSON.stringify({
-          model: 'mistralai/mistral-7b-instruct:free',
+          model: 'openrouter/free',
           max_tokens: 200,
           messages: [{ role: 'user', content: prompt }]
         })
