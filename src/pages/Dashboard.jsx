@@ -163,7 +163,7 @@ export default function Dashboard({ session }) {
     setItems(i => i.map(x => x.id === id ? { ...x, _aiLoad: true } : x))
     if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, _aiLoad: true }))
     const cat = cats.find(c => c.id === item?.category_id)
-    const prompt = `Sen bir sosyal medya içerik analizcisisin. Aşağıdaki Instagram içeriği hakkında 2-3 cümlelik kısa Türkçe özet yaz. Sadece özet metnini yaz.\n\nBaşlık: ${item?.title}\nTür: ${item?.type}\nKategori: ${cat?.name || '-'}\nAçıklama: ${item?.description || '-'}\nEtiketler: ${item?.tags || '-'}`
+    const prompt = `Sen profesyonel bir sosyal medya içerik analizcisisin. Aşağıdaki Instagram içeriğini analiz et ve son derece faydalı, detaylı ama yapılandırılmış bir Türkçe özet çıkar.\n\nEğer içerikte bir uygulama, eklenti, web sitesi veya ürün tavsiyesi varsa bunları maddeler halinde "📌 Öneriler" başlığıyla yaz.\nEğer içerikte bir yemek tarifi, adım adım rehber veya eğitim varsa bunları "📝 Detaylar/Tarif" başlığıyla özetle.\nGenel bağlamı ise "💡 Özet" başlığı altında anlat.\n\nSadece bu sonucu ver, ekstra giriş/çıkış cümleleri kullanma.\n\nBaşlık: ${item?.title}\nTür: ${item?.type}\nKategori: ${cat?.name || '-'}\nAçıklama: ${item?.description || '-'}\nEtiketler: ${item?.tags || '-'}`
     try {
       const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -175,7 +175,7 @@ export default function Dashboard({ session }) {
         },
         body: JSON.stringify({
           model: 'openrouter/free',
-          max_tokens: 200,
+          max_tokens: 800,
           messages: [{ role: 'user', content: prompt }]
         })
       })
@@ -192,7 +192,13 @@ export default function Dashboard({ session }) {
     }
   }
 
-
+  async function updateNote(id, text) {
+    setItems(i => i.map(x => x.id === id ? { ...x, notes: text } : x))
+    if (selectedItem?.id === id) setSelectedItem(s => ({ ...s, notes: text }))
+    const { error } = await supabase.from('items').update({ notes: text }).eq('id', id)
+    if (error) showToast('Not kaydedilirken hata oluştu (Önce SQL komutunu çalıştırdığından emin ol)', 'err')
+    else showToast('Not kaydedildi', 'ok')
+  }
 
   function filtered() {
     let it = [...items]
@@ -536,6 +542,19 @@ export default function Dashboard({ session }) {
                         ✨ AI Özet Oluştur
                       </button>
                     )}
+                  </div>
+
+                  {/* Notes */}
+                  <div style={{ marginTop:24 }}>
+                    <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.8px', color:'#888899', marginBottom:8, display:'flex', alignItems:'center', gap:5 }}>
+                      <span>📝</span> Kişisel Notlar
+                    </div>
+                    <textarea 
+                      placeholder="Bu içerik hakkında kendi notlarınızı buraya yazın... (Yazıdan çıktığınızda otomatik kaydedilir)"
+                      defaultValue={item.notes || ''}
+                      onBlur={e => { if(e.target.value !== (item.notes||'')) updateNote(item.id, e.target.value) }}
+                      style={{ width:'100%', minHeight:110, background:'#18181f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:'12px 14px', color:'#f0f0f5', fontFamily:'sans-serif', fontSize:13, outline:'none', resize:'vertical', lineHeight:1.6 }}
+                    />
                   </div>
                 </div>
 
