@@ -545,11 +545,9 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                   )}
 
                   {/* Description */}
-                  {item.description && (
-                    <div className="ig-desc" style={{ fontSize:13, color:'#c0c0cc', lineHeight:1.8, marginBottom:14 }}>
-                      {item.description}
-                    </div>
-                  )}
+                  <div className="ig-desc" style={{ fontSize:13, color: item.description ? '#c0c0cc' : '#555566', lineHeight:1.8, fontStyle: item.description ? 'normal' : 'italic', marginBottom:14 }}>
+                    {item.description || 'Bu gönderinin açıklaması bulunmuyor.'}
+                  </div>
 
                   {/* Tags */}
                   {item.tags && (
@@ -562,16 +560,8 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                     </div>
                   )}
 
-                  {/* AI Chat Feature */}
-                  <div style={{ marginTop:24 }}>
-                    <button onClick={() => { setChatObj({ open:true, item, messages:[], input:'', loading:false }); setSelectedItem(null); }}
-                      style={{ width:'100%', padding:'12px', borderRadius:12, border:'1px solid rgba(168,85,247,0.3)', background:'rgba(168,85,247,0.08)', color:'#c084fc', fontFamily:'sans-serif', fontSize:13, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                      🤖 Bu İçerik Hakkında AI ile Sohbet Et
-                    </button>
-                  </div>
-
                   {/* Notes */}
-                  <div style={{ marginTop:24, background:'#18181f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:14 }}>
+                  <div style={{ marginTop:14, background:'#18181f', border:'1px solid rgba(255,255,255,0.08)', borderRadius:12, padding:14 }}>
                     <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'.8px', color:'#888899', marginBottom:8, display:'flex', alignItems:'center', gap:5 }}>
                       <span>📝</span> Kişisel Notlar
                     </div>
@@ -588,6 +578,14 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                         {tempNote === (item.notes || '') ? 'Kaydedildi' : 'Kaydet'}
                       </button>
                     </div>
+                  </div>
+
+                  {/* AI Chat Feature */}
+                  <div style={{ marginTop:14 }}>
+                    <button onClick={() => { setChatObj({ open:true, item, messages:[], input:'', loading:false }); setSelectedItem(null); }}
+                      style={{ width:'100%', padding:'12px', borderRadius:12, border:'1px solid rgba(168,85,247,0.3)', background:'rgba(168,85,247,0.08)', color:'#c084fc', fontFamily:'sans-serif', fontSize:13, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                      🤖 Bu İçerik Hakkında AI ile Sohbet Et
+                    </button>
                   </div>
                 </div>
 
@@ -703,7 +701,7 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                 <button onClick={() => setShowModal(false)}
                   style={{ padding:'8px 16px', borderRadius:100, border:'1px solid rgba(255,255,255,0.15)', background:'none', color:'#888899', fontFamily:'sans-serif', fontSize:13, cursor:'pointer' }}>İptal</button>
                 <button onClick={saveItem}
-                  style={{ padding:'8px 18px', borderRadius:100, border:'none', background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', fontFamily:'sans-serif', fontSize:13, fontWeight:500, cursor:'pointer' }}>Kaydet + AI Özet</button>
+                  style={{ padding:'8px 18px', borderRadius:100, border:'none', background:'linear-gradient(135deg,#a855f7,#7c3aed)', color:'#fff', fontFamily:'sans-serif', fontSize:13, fontWeight:500, cursor:'pointer' }}>Kaydet</button>
               </div>
             </div>
           </div>
