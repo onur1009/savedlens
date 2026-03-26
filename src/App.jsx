@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './supabase'
+import Home from './pages/Home'
 import AuthPage from './pages/Auth'
 import Dashboard from './pages/Dashboard'
 
@@ -24,5 +26,21 @@ export default function App() {
     </div>
   )
 
-  return session ? <Dashboard session={session} /> : <AuthPage />
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route 
+          path="/auth" 
+          element={session ? <Navigate to="/dashboard" /> : <AuthPage />} 
+        />
+        <Route 
+          path="/dashboard" 
+          element={session ? <Dashboard session={session} /> : <Navigate to="/auth" />} 
+        />
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Router>
+  )
 }
