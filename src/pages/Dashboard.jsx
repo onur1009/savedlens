@@ -333,7 +333,7 @@ export default function Dashboard({ session }) {
               </div>
               <footer style={{ padding:'24px', borderTop:'1px solid rgba(255,255,255,0.07)', display:'flex', gap:12 }}>
                 <button onClick={()=>window.open(selectedItem.instagram_url, '_blank')} className="primary-gradient" style={{ flex:1, border:'none', borderRadius:14, padding:12, color:'#fff', fontWeight:800, cursor:'pointer' }}>INSTAGRAM'DA AÇ</button>
-              </div>
+              </footer>
             </div>
           </div>
         </div>
