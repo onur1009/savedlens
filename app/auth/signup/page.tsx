@@ -2,13 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { BookmarkPlus, Mail, Lock, User, ArrowRight, Loader2, Sparkles } from 'lucide-react'
+import { BookmarkPlus, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { isSupabaseConfigured } from '@/lib/mock-data'
 
 export default function SignupPage() {
-  const router = useRouter()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -19,12 +16,6 @@ export default function SignupPage() {
   function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-
-    // Offline mode: instant access without Supabase error
-    if (!isSupabaseConfigured()) {
-      router.push('/dashboard')
-      return
-    }
 
     startTransition(async () => {
       const supabase = createClient()
@@ -48,19 +39,18 @@ export default function SignupPage() {
   if (success) {
     return (
       <div className="mesh-bg min-h-screen flex items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center animate-fade-up glass p-8 rounded-2xl">
+        <div className="w-full max-w-sm text-center animate-fade-up glass p-8 rounded-2xl glow-border">
           <div className="w-12 h-12 rounded-2xl bg-[var(--accent)] flex items-center justify-center shadow-[0_0_24px_var(--accent-glow)] mx-auto mb-4">
             <Mail className="w-6 h-6 text-white" />
           </div>
           <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
-            Doğrulama e-postası gönderildi!
+            Hesabınız oluşturuldu!
           </h2>
           <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            <strong>{email}</strong> adresine bir onay linki gönderdik.
-            E-postanı doğruladıktan sonra giriş yapabilirsin.
+            <strong>{email}</strong> adresiyle kaydınız tamamlandı. Şimdi kütüphanenize giriş yapabilirsiniz.
           </p>
-          <Link href="/auth/login" className="btn-primary w-full mt-6 justify-center">
-            Giriş sayfasına git
+          <Link href="/auth/login" className="btn-primary w-full mt-6 justify-center py-2.5 rounded-xl">
+            Giriş Yap
           </Link>
         </div>
       </div>
@@ -79,19 +69,12 @@ export default function SignupPage() {
             SavedLens&apos;e katıl
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-1">
-            Ücretsiz hesap oluştur, hemen başla
+            Ücretsiz hesap oluştur, içeriklerini arşivle
           </p>
         </div>
 
         {/* Form */}
         <form onSubmit={handleSignup} className="glass p-6 rounded-2xl flex flex-col gap-4 glow-border">
-          {!isSupabaseConfigured() && (
-            <div className="text-xs p-3 rounded-xl bg-indigo-950/40 border border-indigo-800/40 text-indigo-300 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>Çevrimdışı mod aktif. Kaydol butonuna tıklayarak doğrudan kütüphaneye geçebilirsiniz.</span>
-            </div>
-          )}
-
           {error && (
             <div
               role="alert"
@@ -103,7 +86,7 @@ export default function SignupPage() {
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="name" className="text-xs font-medium text-[var(--text-secondary)]">
-              Adın
+              Adın Soyadın
             </label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
@@ -112,7 +95,7 @@ export default function SignupPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Adın Soyadın"
+                placeholder="Ahmet Yılmaz"
                 required
                 autoComplete="name"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
@@ -131,7 +114,7 @@ export default function SignupPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="ornek@mail.com"
+                placeholder="adiniz@sirket.com"
                 required
                 autoComplete="email"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
@@ -150,8 +133,8 @@ export default function SignupPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="En az 8 karakter"
-                minLength={8}
+                placeholder="En az 6 karakter"
+                minLength={6}
                 required
                 autoComplete="new-password"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"

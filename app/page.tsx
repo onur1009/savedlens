@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { BookmarkPlus, Sparkles, Layers, ArrowRight, Zap, Globe, Mic } from 'lucide-react'
-import { isSupabaseConfigured } from '@/lib/mock-data'
 
 const features = [
   {
@@ -36,25 +35,8 @@ const features = [
 ]
 
 export default function LandingPage() {
-  const isConfigured = isSupabaseConfigured()
-  const ctaTarget = isConfigured ? '/auth/signup' : '/dashboard'
-  const loginTarget = isConfigured ? '/auth/login' : '/dashboard'
-
   return (
     <div className="mesh-bg min-h-screen flex flex-col relative">
-      {/* Offline banner if in local dev mode */}
-      {!isConfigured && (
-        <div className="bg-amber-950/80 border-b border-amber-800/60 px-4 py-2 text-center text-xs text-amber-200 flex items-center justify-center gap-2 relative z-20">
-          <span>⚡ Çevrimdışı Geliştirme Modu Aktif.</span>
-          <Link
-            href="/dashboard"
-            className="underline font-semibold hover:text-white flex items-center gap-1"
-          >
-            Doğrudan Panele Geçin ↗
-          </Link>
-        </div>
-      )}
-
       {/* ── Navbar ───────────────────────────────────────────── */}
       <nav className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
         <Link href="/" className="flex items-center gap-2">
@@ -70,10 +52,10 @@ export default function LandingPage() {
         </Link>
 
         <div className="flex items-center gap-3">
-          <Link href={loginTarget} className="btn-ghost text-sm">
+          <Link href="/auth/login" className="btn-ghost text-sm">
             Giriş Yap
           </Link>
-          <Link href={ctaTarget} className="btn-primary text-sm">
+          <Link href="/auth/signup" className="btn-primary text-sm">
             Ücretsiz Başla
           </Link>
         </div>
@@ -83,7 +65,7 @@ export default function LandingPage() {
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 py-20 stagger">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-sm text-sm text-[var(--text-secondary)] mb-8">
           <Sparkles className="w-3.5 h-3.5 text-[var(--accent-light)]" />
-          AI destekli sosyal medya kütüphanesi • Dewey Mimarisi & V2.0 Yayında
+          AI destekli sosyal medya kütüphanesi • V2.0 Yayında
         </div>
 
         <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold tracking-tighter mb-6 max-w-4xl">
@@ -93,13 +75,13 @@ export default function LandingPage() {
         </h1>
 
         <p className="text-lg sm:text-xl text-[var(--text-secondary)] max-w-2xl mb-10 leading-relaxed">
-          Instagram, TikTok, LinkedIn, YouTube veya web içerikleri — yapay zeka özetler,
-          etiketler ve anında bulmanı sağlar. Kalıcı medya yedekleme ve dışa aktarma imkanı.
+          Instagram, TikTok, LinkedIn, YouTube ve web içerikleri — yapay zeka özetler,
+          etiketler ve anında bulmanı sağlar. Kalıcı bulut medya yedekleme ve Notion/CSV dışa aktarma.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3">
           <Link
-            href={ctaTarget}
+            href="/auth/signup"
             className="btn-primary text-base px-7 py-3 rounded-2xl flex items-center justify-center gap-2"
             id="cta-signup"
           >
@@ -107,11 +89,11 @@ export default function LandingPage() {
             <ArrowRight className="w-4 h-4" />
           </Link>
           <Link
-            href={loginTarget}
+            href="/dashboard"
             className="btn-ghost text-base px-7 py-3 rounded-2xl"
             id="cta-login"
           >
-            Kütüphaneyi Aç
+            Kütüphaneye Git
           </Link>
         </div>
 
@@ -134,7 +116,7 @@ export default function LandingPage() {
 
       {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="relative z-10 py-6 text-center text-xs text-[var(--text-muted)] border-t border-[var(--border)]">
-        © {new Date().getFullYear()} SavedLens — Dewey PKM & Arşivleme Platformu. Tüm hakları saklıdır.
+        © {new Date().getFullYear()} SavedLens — Kişisel İçerik Arşivleme & Bilgi Yönetim Platformu.
       </footer>
     </div>
   )

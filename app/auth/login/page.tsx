@@ -3,9 +3,8 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BookmarkPlus, Mail, Lock, ArrowRight, Loader2, Sparkles } from 'lucide-react'
+import { BookmarkPlus, Mail, Lock, ArrowRight, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { isSupabaseConfigured } from '@/lib/mock-data'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -17,12 +16,6 @@ export default function LoginPage() {
   function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-
-    // Offline mode: instant access without Supabase error
-    if (!isSupabaseConfigured()) {
-      router.push('/dashboard')
-      return
-    }
 
     startTransition(async () => {
       const supabase = createClient()
@@ -58,13 +51,6 @@ export default function LoginPage() {
 
         {/* Form */}
         <form onSubmit={handleLogin} className="glass p-6 rounded-2xl flex flex-col gap-4 glow-border">
-          {!isSupabaseConfigured() && (
-            <div className="text-xs p-3 rounded-xl bg-indigo-950/40 border border-indigo-800/40 text-indigo-300 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
-              <span>Çevrimdışı test modu aktif. Giriş butonuna basarak doğrudan panele geçebilirsiniz.</span>
-            </div>
-          )}
-
           {error && (
             <div
               role="alert"
@@ -85,7 +71,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="demo@savedlens.app"
+                placeholder="adiniz@sirket.com"
                 required
                 autoComplete="email"
                 className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"

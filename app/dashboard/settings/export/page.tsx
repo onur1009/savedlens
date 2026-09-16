@@ -1,19 +1,31 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Download,
   FileSpreadsheet,
   FileCode,
   Table,
-  CheckCircle2,
-  ExternalLink,
-  Sparkles,
+  Loader2,
 } from 'lucide-react'
-import { MOCK_BOOKMARKS } from '@/lib/mock-data'
+import type { Bookmark } from '@/lib/mock-data'
 
 export default function ExportPage() {
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch('/api/v1/bookmarks/export?format=json')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setBookmarks(data)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   function triggerDownload(format: 'csv' | 'json') {
     setDownloading(format)
@@ -102,46 +114,57 @@ export default function ExportPage() {
           <div className="flex items-center gap-2">
             <Table className="w-4 h-4 text-[var(--accent-light)]" />
             <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-              Dışa Aktarılacak Veriler Önizlemesi ({MOCK_BOOKMARKS.length} kayıt)
+              Dışa Aktarılacak Veriler Önizlemesi ({bookmarks.length} kayıt)
             </h3>
           </div>
           <span className="text-[11px] text-[var(--text-muted)]">Canlı Veri</span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
-                <th className="py-2.5 px-3 font-semibold">Platform</th>
-                <th className="py-2.5 px-3 font-semibold">Yazar</th>
-                <th className="py-2.5 px-3 font-semibold">Özet</th>
-                <th className="py-2.5 px-3 font-semibold">Etiketler</th>
-                <th className="py-2.5 px-3 font-semibold">Tür</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {MOCK_BOOKMARKS.slice(0, 4).map((b) => (
-                <tr key={b.id} className="hover:bg-[var(--bg-surface)]">
-                  <td className="py-2.5 px-3 font-medium uppercase text-[10px] text-[var(--accent-light)]">
-                    {b.platform}
-                  </td>
-                  <td className="py-2.5 px-3 font-medium text-[var(--text-primary)]">
-                    @{b.author_username}
-                  </td>
-                  <td className="py-2.5 px-3 text-[var(--text-secondary)] max-w-xs truncate">
-                    {b.ai_summary}
-                  </td>
-                  <td className="py-2.5 px-3 text-[var(--text-muted)]">
-                    {b.ai_tags.slice(0, 2).map((t) => `#${t}`).join(' ')}
-                  </td>
-                  <td className="py-2.5 px-3 text-[var(--text-muted)] text-[10px]">
-                    {b.media_type}
-                  </td>
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-xs text-[var(--text-muted)] gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-[var(--accent-light)]" />
+            <span>Kayıtlar yükleniyor...</span>
+          </div>
+        ) : bookmarks.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[var(--text-muted)]">
+            Henüz kaydedilmiş içerik bulunmuyor.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
+                  <th className="py-2.5 px-3 font-semibold">Platform</th>
+                  <th className="py-2.5 px-3 font-semibold">Yazar</th>
+                  <th className="py-2.5 px-3 font-semibold">Özet</th>
+                  <th className="py-2.5 px-3 font-semibold">Etiketler</th>
+                  <th className="py-2.5 px-3 font-semibold">Tür</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {bookmarks.slice(0, 5).map((b) => (
+                  <tr key={b.id} className="hover:bg-[var(--bg-surface)]">
+                    <td className="py-2.5 px-3 font-medium uppercase text-[10px] text-[var(--accent-light)]">
+                      {b.platform}
+                    </td>
+                    <td className="py-2.5 px-3 font-medium text-[var(--text-primary)]">
+                      @{b.author_username}
+                    </td>
+                    <td className="py-2.5 px-3 text-[var(--text-secondary)] max-w-xs truncate">
+                      {b.ai_summary}
+                    </td>
+                    <td className="py-2.5 px-3 text-[var(--text-muted)]">
+                      {(b.ai_tags || []).slice(0, 2).map((t) => `#${t}`).join(' ')}
+                    </td>
+                    <td className="py-2.5 px-3 text-[var(--text-muted)] text-[10px]">
+                      {b.media_type}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
