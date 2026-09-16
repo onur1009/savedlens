@@ -99,6 +99,20 @@ const css = `
     color: #4ade80;
     font-weight: 500;
   }
+
+  /* REPONSIVE */
+  .auth-nav { padding: 0 36px; height: 130px; }
+  .auth-logo-header { height: 150px; }
+  .auth-main { padding: 24px 16px 80px; }
+  .auth-card { padding: 28px 28px 24px; }
+  
+  @media (max-width: 768px) {
+    .auth-nav { padding: 0 16px; height: 90px; }
+    .auth-logo-header { height: 110px; }
+    .auth-main { padding: 12px 16px 60px; }
+    .auth-card { padding: 24px 20px 20px; }
+  }
+
   .input-wrap { position: relative; }
   .input-icon {
     position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
@@ -151,9 +165,9 @@ export default function AuthPage({ onGoToLanding, onGoToHelp, onGoToPrivacy, onG
       <div style={{ minHeight:'100vh', background:'#0c0e12', display:'flex', flexDirection:'column', fontFamily:'Manrope, sans-serif', position:'relative' }}>
 
         {/* Nav */}
-        <nav style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0 36px', height:130, position:'relative', zIndex:10 }}>
+        <nav className="auth-nav" style={{ display:'flex', justifyContent:'space-between', alignItems:'center', position:'relative', zIndex:10 }}>
           <div style={{ display:'flex', alignItems:'center', cursor:'pointer' }} onClick={onGoToLanding}>
-            <img src={logo} alt="SavedLens Logo" style={{ height:150, width:'auto', objectFit:'contain', marginTop:15 }} />
+            <img className="auth-logo-header" src={logo} alt="SavedLens Logo" style={{ width:'auto', objectFit:'contain', marginTop:15 }} />
           </div>
           <div style={{ display:'flex', gap:7, alignItems:'center', fontSize:13, color:'rgba(148,163,184,0.6)', cursor:'pointer' }} onClick={onGoToHelp}>
             <span className="material-symbols-outlined" style={{ fontSize:16 }}>help_outline</span>
@@ -162,7 +176,7 @@ export default function AuthPage({ onGoToLanding, onGoToHelp, onGoToPrivacy, onG
         </nav>
 
         {/* Main */}
-        <main style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'24px 16px 80px', position:'relative', zIndex:5 }}>
+        <main className="auth-main" style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', position:'relative', zIndex:5 }}>
           <div style={{ width:'100%', maxWidth:460 }}>
 
             {/* Logo / title */}
@@ -179,7 +193,7 @@ export default function AuthPage({ onGoToLanding, onGoToHelp, onGoToPrivacy, onG
             </div>
 
             {/* Card */}
-            <div className="auth-card" key={mode} style={{ background:'rgba(22,25,34,0.75)', backdropFilter:'blur(24px)', border:'1px solid rgba(99,102,241,0.1)', borderRadius:22, padding:'28px 28px 24px' }}>
+            <div className="auth-card" key={mode} style={{ background:'rgba(22,25,34,0.75)', backdropFilter:'blur(24px)', border:'1px solid rgba(99,102,241,0.1)', borderRadius:22 }}>
 
               {/* Tabs */}
               <div style={{ display:'flex', gap:6, background:'rgba(0,0,0,0.2)', borderRadius:12, padding:4, marginBottom:24 }}>

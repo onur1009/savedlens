@@ -1,7 +1,12 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../supabase'
+import Cropper from 'react-easy-crop'
+import getCroppedImg from '../utils/cropImage'
 
-import logo from '../assets/logo.png'
+import Sidebar from '../components/dashboard/Sidebar'
+import Header from '../components/dashboard/Header'
+import ItemCard from '../components/dashboard/ItemCard'
+import MobileNav from '../components/dashboard/MobileNav'
 
 const PAL = ['#c084fc','#f472b6','#2dd4bf','#fbbf24','#4ade80','#f87171','#60a5fa','#a78bfa','#34d399','#fb923c']
 
@@ -15,7 +20,6 @@ export default function Dashboard({ session }) {
   const [search, setSearch] = useState('')
   const [tf, setTf] = useState('all')
   const [showModal, setShowModal] = useState(false)
-  const [tab, setTab] = useState('link')
   const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
   const apifyKey = import.meta.env.VITE_APIFY_KEY || ''
   const [form, setForm] = useState({ url:'', title:'', desc:'', thumb:'', type:'post', cat:'', tags:'' })
@@ -27,7 +31,11 @@ export default function Dashboard({ session }) {
   
   const [profile, setProfile] = useState(null)
   const [showProfile, setShowProfile] = useState(false)
-  const [avatarInput, setAvatarInput] = useState('')
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [imageToCrop, setImageToCrop] = useState(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null)
   const [showAdmin, setShowAdmin] = useState(false)
   const [allUsers, setAllUsers] = useState([])
   
@@ -35,8 +43,6 @@ export default function Dashboard({ session }) {
   const [tempNote, setTempNote] = useState('')
   const [chatObj, setChatObj] = useState({ open:false, item:null, messages:[], input:'', loading:false })
   const chatEndRef = useRef(null)
-  const detailChatEndRef = useRef(null)
-  const catInputRef = useRef(null)
   const pvtRef = useRef(null)
   const [isOnline, setIsOnline] = useState(window.navigator.onLine)
   const [syncing, setSyncing] = useState(false)
@@ -54,8 +60,13 @@ export default function Dashboard({ session }) {
 
   // LocalStorage Helpers
   const getLocal = (key) => {
-    const d = localStorage.getItem(`sl_${key}_${session.user.id}`)
-    return d ? JSON.parse(d) : null
+    try {
+      const d = localStorage.getItem(`sl_${key}_${session?.user?.id}`)
+      return d ? JSON.parse(d) : null
+    } catch (e) {
+      console.error(`Error parsing local storage for ${key}:`, e)
+      return null
+    }
   }
   const setLocal = (key, val) => {
     localStorage.setItem(`sl_${key}_${session.user.id}`, JSON.stringify(val))
@@ -79,12 +90,14 @@ export default function Dashboard({ session }) {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' })
   }, [chatObj.messages, chatObj.open])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadData() }, [])
 
   // ESC closes detail popup
@@ -98,21 +111,26 @@ export default function Dashboard({ session }) {
 
   async function loadData() {
     setLoading(true)
-    const uid = session.user.id
     
-    // 1. Load from Local First (Instant UI)
-    const localCats = getLocal('categories')
-    const localItems = getLocal('items')
-    const localProf = getLocal('profile')
-    
-    if (localCats) setCats(localCats)
-    if (localItems) setItems(localItems)
-    if (localProf) setProfile(localProf)
-    
-    // If we have local data, we can stop loading early for better UX
-    if (localCats && localItems) setLoading(false)
-
     try {
+      if (!session || !session.user || !session.user.id) {
+        console.error('No valid session user found.')
+        return
+      }
+      const uid = session.user.id
+      
+      // 1. Load from Local First (Instant UI)
+      const localCats = getLocal('categories')
+      const localItems = getLocal('items')
+      const localProf = getLocal('profile')
+      
+      if (localCats) setCats(localCats)
+      if (localItems) setItems(localItems)
+      if (localProf) setProfile(localProf)
+      
+      // If we have local data, we can stop loading early for better UX
+      if (localCats && localItems) setLoading(false)
+
       // 2. Fetch from Supabase (Background Sync)
       const [{ data: c, error: ce }, { data: i, error: ie }, { data: p, error: pe }] = await Promise.all([
         supabase.from('categories').select('*').eq('user_id', uid).order('created_at'),
@@ -120,13 +138,9 @@ export default function Dashboard({ session }) {
         supabase.from('profiles').select('*').eq('id', uid).single()
       ])
       
-      if (ce || ie || pe) {
-        const firstErr = ce?.message || ie?.message || pe?.message
-        console.warn('Supabase Sync Fetch Failed:', { ce, ie, pe })
-        if (firstErr?.includes('policy')) {
-          showToast('Senkronizasyon Hatası: RLS Politikası hatası (403). Veritabanı izinlerinizi kontrol edin.', 'err')
-        }
-      }
+      if (ce) console.warn('Categories fetch failed:', ce)
+      if (ie) console.warn('Items fetch failed:', ie)
+      if (pe) console.warn('Profile fetch failed (Check RLS):', pe)
 
       if (!ce && c) { setCats(c); setLocal('categories', c); }
       if (!ie && i) { setItems(i); setLocal('items', i); }
@@ -137,6 +151,9 @@ export default function Dashboard({ session }) {
           const { data: all } = await supabase.from('profiles').select('*').order('created_at', { ascending: false })
           if (all) setAllUsers(all)
         }
+      } else {
+        // Profil yoksa veya izin yoksa en azından boş kalmasın
+        setProfile({ id: uid, username: session.user.email?.split('@')[0] })
       }
       
       // Trigger sync for any pending offline changes
@@ -144,6 +161,7 @@ export default function Dashboard({ session }) {
       
     } catch (err) {
       console.error('Sync Error:', err)
+      const localCats = getLocal('categories')
       if (!localCats) showToast('Bağlantı hatası ve yerel veri bulunamadı.', 'err')
     } finally {
       setLoading(false)
@@ -175,6 +193,9 @@ export default function Dashboard({ session }) {
         if (!err) {
           const idx = newQueue.findIndex(x => x.id === item.id)
           if (idx > -1) newQueue.splice(idx, 1)
+        } else {
+          // Takılı kalan işlemi logla - hangi tablo ve aksiyon olduğunu göster
+          console.warn(`Sync failed for [${item.action}] on [${item.table}]:`, err.message, '\nData:', item.data)
         }
       } catch (e) {
         console.error('Sync item error:', e)
@@ -183,8 +204,20 @@ export default function Dashboard({ session }) {
     
     localStorage.setItem(`sl_sync_queue_${session.user.id}`, JSON.stringify(newQueue))
     setSyncing(false)
-    if (newQueue.length === 0) showToast('Tüm veriler bulutla senkronize edildi.', 'ok')
-    else showToast(`${q.length - newQueue.length} işlem senkronize edildi, ${newQueue.length} bekliyor.`, 'warn')
+    if (newQueue.length === 0) {
+      if (q.length > 0) {
+        // Only show if we actually synced something
+        showToast('Tüm veriler bulutla senkronize edildi. ✓', 'ok')
+      }
+    } else {
+      // Takılı olanları konsola yazdır sessizce
+      console.warn('Silent queue warning: items pending:', newQueue.length)
+    }
+  }
+
+  function clearSyncQueue() {
+    localStorage.removeItem(`sl_sync_queue_${session.user.id}`)
+    showToast('Senkronizasyon kuyruğu temizlendi.', 'ok')
   }
 
   function showToast(msg, type = 'ok') {
@@ -296,7 +329,7 @@ export default function Dashboard({ session }) {
       let thumb = d.thumbnail_url || `https://www.instagram.com/p/${sc}/media/?size=m`
       setForm(f => ({ ...f, thumb }))
       setPrevData({ title: d.title || 'Instagram İçeriği', author: d.author_name, type, thumb })
-    } catch (e) {
+    } catch {
       setForm(f => ({ ...f, thumb: `https://www.instagram.com/p/${sc}/media/?size=m` }))
       setPrevData({ title: 'Instagram İçeriği', type })
     }
@@ -316,13 +349,22 @@ export default function Dashboard({ session }) {
         } else {
           // Apify veriyi array olarak döner
           const itemData = Array.isArray(rd) ? rd[0] : null
-          const caption = itemData?.caption || ''
           
-          if (caption) {
-            setForm(f => ({ ...f, desc: caption }))
-            showToast('Açıklama Apify ile otomatik çekildi!', 'ok')
+          if (itemData) {
+            const caption = itemData.caption || ''
+            const thumb = itemData.displayUrl || itemData.thumbnailUrl || itemData.videoThumbnailUrl
+            
+            if (caption) {
+              setForm(f => ({ ...f, desc: caption }))
+              showToast('Açıklama Apify ile otomatik çekildi!', 'ok')
+            }
+            if (thumb) {
+              setForm(f => ({ ...f, thumb }))
+              setPrevData(p => ({ ...p, thumb }))
+              showToast('Görsel önizlemesi güncellendi!', 'ok')
+            }
           } else {
-            showToast('Apify: Gönderi bulundu ancak açıklama (caption) boş.', 'warn')
+            showToast('Apify: Gönderi bulunamadı veya veri çekilemedi.', 'warn')
           }
         }
       } catch (apiErr) {
@@ -397,61 +439,133 @@ export default function Dashboard({ session }) {
   }
 
   // AI Chat Handler
-  async function handleSendChatMessage() {
-    const { input, item, messages } = chatObj
-    if (!input.trim() || !apiKey) return
-    const userMsg = { role: 'user', content: input.trim() }
-    setChatObj(c => ({ ...c, messages: [...c.messages, userMsg], input: '', loading: true }))
+  async function handleSendChatMessage(overrideInput = '') {
+    const finalInput = overrideInput || chatObj.input
+    if (!finalInput.trim()) return
+    
+    if (!apiKey) {
+      showToast('AI Asistanı için VITE_OPENROUTER_API_KEY ayarlanmamış!', 'warn')
+      return 
+    }
+
+    const { messages, item } = chatObj
+    const userMsg = { role: 'user', content: finalInput.trim() }
+    
+    setChatObj(c => ({ 
+      ...c, 
+      messages: [...c.messages, userMsg], 
+      input: overrideInput ? c.input : '', 
+      loading: true 
+    }))
     
     const cat = cats.find(c => c.id === item?.category_id)
-    const sysPrompt = `Sen harika bir bakış açısına sahip, yetenekli bir asistansın. Kullanıcı sana aşağıdaki kaydettiği Instagram gönderisi ile ilgili sorular soracak. 
-Gönderi Başlığı: ${item?.title || 'Yok'}
-Açıklama: ${item?.description || 'Yok'}
-Tür: ${item?.type || 'Yok'}
-Kategori: ${cat?.name || 'Yok'}
-Etiketler: ${item?.tags || 'Yok'}
-Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığı yapmadan harika bir Türkçe ile yanıtla.`
+    
+    // İçerik bağlamını oluştur - sadece dolu alanları ekle
+    const hasContext = item?.title || item?.description || item?.tags
+    const contextLines = []
+    if (item?.title)       contextLines.push(`Başlık: ${item.title}`)
+    if (item?.description) contextLines.push(`Açıklama: ${item.description}`)
+    if (item?.type)        contextLines.push(`Tür: ${item.type === 'reel' ? 'Instagram Reels Videosu' : item.type === 'carousel' ? 'Carousel/Albüm Gönderi' : 'Fotoğraf Gönderisi'}`)
+    if (cat?.name)         contextLines.push(`Kategori: ${cat.name}`)
+    if (item?.tags)        contextLines.push(`Etiketler: ${item.tags}`)
+    if (item?.notes)       contextLines.push(`Kullanıcı Notları: ${item.notes}`)
+
+    const sysPrompt = hasContext
+      ? `Sen, Instagram içeriklerini analiz etme konusunda uzman bir Türkçe asistansın.
+
+Kullanıcının kaydettiği içerik hakkında bilgiler:
+${contextLines.join('\n')}
+
+KURALLARIN:
+- Sorulara kısa, net ve Türkçe yanıt ver.
+- Eğer soru içerikle alakalıysa, yukarıdaki bilgilere dayanarak cevap ver.
+- Eğer içeriğin tüm bilgileri yoksa, mevcut bilgilerle en iyi yorumu yap.
+- Hiçbir zaman "veri yok", "boş", "bilinmiyor" gibi yanıtlar verme. Mevcut bilgilerle ilerle.
+- Felsefi veya soyut cevaplar verme. Pratik ve doğrudan ol.`
+      : `Sen, Instagram içeriklerini analiz etme konusunda uzman bir Türkçe asistansın.
+Kullanıcı, ayrıntıları henüz yüklenmemiş bir içerik hakkında soru soruyor.
+
+KURALLARIN:
+- İçerik bilgileri tam yüklenmemiş olduğundan, genel Instagram içerik analizi konusunda yardımcı ol.
+- Kullanıcıya içerik detayları (URL, açıklama) paylaşmasını önererek daha iyi analiz yapabileceğini belirt.
+- Kısa ve pratik cevaplar ver.`
+
+    // 15 saniyelik zaman aşımı kontrolü (Timeout)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 20000)
 
     try {
-      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-          'HTTP-Referer': window.location.origin
-        },
-        body: JSON.stringify({
-          model: 'openrouter/free',
-          max_tokens: 800,
-          messages: [{ role: 'system', content: sysPrompt }, ...messages, userMsg]
-        })
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error?.message || 'API Hatası')
-      const reply = d.choices?.[0]?.message?.content || 'Yanıt alınamadı.'
+      const models = [
+        'meta-llama/llama-3.1-8b-instruct:free',
+        'mistralai/mistral-7b-instruct:free',
+        'openrouter/auto'
+      ]
+      let lastError = null
+      let reply = null
+
+      for (const model of models) {
+        try {
+          console.log('OpenRouter Trying:', model)
+          const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            signal: controller.signal,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+              'HTTP-Referer': window.location.origin,
+              'X-Title': 'SavedLens AI'
+            },
+            body: JSON.stringify({
+              model,
+              max_tokens: 1000,
+              temperature: 0.7,
+              messages: [{ role: 'system', content: sysPrompt }, ...messages, userMsg]
+            })
+          })
+          const d = await r.json()
+          if (!r.ok || d.error) {
+            lastError = d.error?.message || 'Model hatası'
+            console.warn(`Model ${model} failed:`, lastError)
+            continue // Bir sonraki modeli dene
+          }
+          reply = d.choices?.[0]?.message?.content
+          if (reply) break // Başarılı yanıt, döngüden çık
+        } catch (modelErr) {
+          lastError = modelErr.message
+          if (modelErr.name === 'AbortError') throw modelErr // Timeout ise direkt fırlat
+        }
+      }
+
+      clearTimeout(timeoutId)
+      if (!reply) throw new Error(lastError || 'Tüm modeller yanıt vermedi.')
       setChatObj(c => ({ ...c, messages: [...c.messages, { role: 'assistant', content: reply }], loading: false }))
     } catch (e) {
-      showToast('AI hatası: ' + e.message, 'err')
+      clearTimeout(timeoutId)
+      console.error('AI Error Details:', { name: e.name, message: e.message })
+      let errMsg = e.message
+      if (e.name === 'AbortError') errMsg = 'Yapay zeka yanıt süresi doldu (15 saniye). Lütfen tekrar deneyin.'
+      
+      showToast('AI hatası: ' + errMsg, 'err')
       setChatObj(c => ({ ...c, loading: false }))
     }
   }
 
-  async function handleUpdateProfile() {
-    const updatedProf = { ...profile, ...profForm, username: profForm.username, bio: profForm.bio, avatar_url: profForm.avatar }
+  async function handleUpdateProfile(uploadedAvatarUrl = null) {
+    const avatarUrl = uploadedAvatarUrl || profForm.avatar
+    const updatedProf = { ...profile, username: profForm.username, bio: profForm.bio, avatar_url: avatarUrl }
     setProfile(updatedProf)
     setLocal('profile', updatedProf)
-    showToast('Profil güncellendi (Yerel)', 'ok')
+    showToast('Profil başarıyla güncellendi ✓', 'ok')
 
     const { error } = await supabase.from('profiles').update({ 
       username: profForm.username, 
       bio: profForm.bio, 
-      avatar_url: profForm.avatar 
+      avatar_url: avatarUrl 
     }).eq('id', session.user.id)
 
     if (error) {
-      addToQueue('UPDATE', 'profiles', { id: session.user.id, ...profForm, avatar_url: profForm.avatar })
-    } else {
-      showToast('Profil bulutla eşitlendi', 'ok')
+      addToQueue('UPDATE', 'profiles', { id: session.user.id, username: profForm.username, bio: profForm.bio, avatar_url: avatarUrl })
+      console.warn('Silent sync warning for profile save:', error.message)
     }
   }
 
@@ -484,170 +598,65 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
 
   return (
     <div className="flex min-h-screen bg-background font-body text-on-surface">
-      {/* SideNavBar */}
-      <aside className="fixed left-0 top-0 h-full w-72 bg-background border-r border-white/5 flex flex-col z-40 hidden md:flex pt-8 pb-8">
-        <div className="px-8 mb-10 flex items-center">
-          <img src={logo} alt="SavedLens" className="h-10 w-auto object-contain" />
-        </div>
-        
-        <nav className="flex-1 px-4 space-y-8 overflow-y-auto no-scrollbar">
-          {/* GENEL SECTION */}
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.2em] text-slate-500 mb-4 px-4 uppercase">Genel</p>
-            <div className="flex flex-col gap-1">
-                {[
-                  { id: 'all', label: 'Hafıza Akışı', icon: 'data_thresholding', count: items.length },
-                  { id: 'reels', label: 'Reels', icon: 'movie', count: items.filter(i => i.type === 'reel').length },
-                  { id: 'posts', label: 'Gönderiler', icon: 'image', count: items.filter(i => i.type === 'post').length },
-                  { id: 'fav', label: 'Favoriler', icon: 'star', count: items.filter(i => i.is_favorite).length },
-                  { id: 'settings', label: 'Ayarlar', icon: 'settings', count: null },
-                ].map(v => (
-                  <button
-                    key={v.id}
-                    onClick={() => { setView(v.id); setCurrentCat(null); setTf('all'); }}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                      view === v.id && !currentCat 
-                        ? 'bg-white/5 text-white border-l-4 border-primary' 
-                        : 'text-slate-500 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <span className={`material-symbols-outlined text-xl ${view === v.id && !currentCat ? 'fill-1' : ''}`}>{v.icon}</span>
-                    <span className="flex-1 text-left font-bold tracking-tight">{v.label}</span>
-                    {v.count !== null && <span className="text-[10px] font-black bg-white/5 px-2 py-0.5 rounded-full text-slate-500">{v.count}</span>}
-                  </button>
-                ))}
-            </div>
-          </div>
-
-          {/* KATEGORÄ°LER SECTION */}
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.2em] text-slate-500 mb-4 px-4 uppercase">Kategoriler</p>
-            <div className="flex flex-col gap-1">
-              {cats.map((c, idx) => (
-                <button
-                  key={c.id}
-                  onClick={() => { setCurrentCat(c.id); setView(null); }}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all group ${
-                    currentCat === c.id 
-                      ? 'bg-white/5 text-white border-l-4' 
-                      : 'text-slate-500 hover:text-white hover:bg-white/5'
-                  }`}
-                  style={currentCat === c.id ? { borderLeftColor: c.color } : {}}
-                >
-                  <span className="material-symbols-outlined text-xl" style={{ color: c.color }}>folder</span>
-                  <span className="flex-1 text-left truncate">{c.name}</span>
-                  <span className="text-[10px] opacity-50">{items.filter(i => i.category_id === c.id).length}</span>
-                  <span 
-                    onClick={(e) => { e.stopPropagation(); delCat(c.id); }}
-                    className="material-symbols-outlined text-sm opacity-0 group-hover:opacity-100 text-red-400 hover:scale-110 transition-all"
-                  >
-                    delete
-                  </span>
-                </button>
-              ))}
-              
-              <button 
-                onClick={() => setShowCatModal(true)}
-                className="mt-4 mx-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/10 text-primary border border-white/5 rounded-xl transition-all text-sm font-bold active:scale-95 group"
-              >
-                <span className="material-symbols-outlined text-sm transition-transform group-hover:rotate-90">add_circle</span>
-                Yeni Kategori
-              </button>
-            </div>
-          </div>
-        </nav>
-
-        <div className="px-4 mt-auto border-t border-white/5 pt-6">
-          <div 
-            onClick={() => setView('settings')}
-            className="bg-surface-container-low rounded-2xl p-4 flex items-center gap-3 group cursor-pointer hover:bg-white/5 transition-all"
-          >
-            {profile?.avatar_url ? (
-               <img alt="User Avatar" className="w-10 h-10 rounded-xl object-cover" src={profile.avatar_url} />
-            ) : (
-              <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary font-bold">
-                {(session.user.email || 'U')[0].toUpperCase()}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-on-surface truncate">{session.user.email?.split('@')[0]}</p>
-              <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">Premium Üye</p>
-            </div>
-            <span 
-              onClick={(e) => { e.stopPropagation(); supabase.auth.signOut(); }}
-              className="material-symbols-outlined text-slate-500 hover:text-red-400 transition-colors"
-            >
-              logout
-            </span>
-          </div>
-          <div className="mt-4 text-center text-[10px] text-slate-600 font-medium tracking-tight">
-            Created by <span className="text-slate-400">Onur Çağlar Çakın</span>
-          </div>
-        </div>
-      </aside>
+      {/* SideNavBar (Desktop) */}
+      <Sidebar
+        view={view}
+        setView={setView}
+        currentCat={currentCat}
+        setCurrentCat={setCurrentCat}
+        setTf={setTf}
+        items={items}
+        cats={cats}
+        delCat={delCat}
+        setShowCatModal={setShowCatModal}
+        profile={profile}
+        session={session}
+        onSignOut={() => supabase.auth.signOut()}
+      />
 
       {/* Main Content Area */}
-      <main className="flex-1 md:ml-72 flex flex-col min-h-screen bg-background">
+      <main className="flex-1 md:ml-72 flex flex-col min-h-screen bg-background pb-20 md:pb-0">
         {/* TopAppBar */}
-        <header className="fixed top-0 right-0 left-0 md:left-72 z-50 bg-background/80 backdrop-blur-xl flex items-center justify-between px-6 h-20 border-b border-white/5 gap-4">
-          <div className="md:hidden">
-            <img src={logo} alt="Logo" className="h-10 w-auto object-contain" />
-          </div>
-          <div className="flex-1 max-w-xl relative group">
-            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors">search</span>
-            <input 
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full bg-surface-container-low border-none rounded-xl py-2.5 pl-12 pr-4 text-sm font-body text-on-surface placeholder:text-slate-600 focus:ring-1 focus:ring-white/10 transition-all font-medium" 
-              placeholder="Arşivinde ara..." 
-            />
-          </div>
-          <div className="flex items-center gap-4 ml-6">
-            <div className="hidden sm:flex items-center gap-3">
-              <div className="flex bg-surface-container-low rounded-xl p-1 gap-1 border border-white/5">
-                {['grid','list'].map(v => (
-                  <button key={v} onClick={() => setGv(v)} className={`p-1.5 rounded-lg transition-all ${gv === v ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
-                    <span className="material-symbols-outlined text-xl">{v === 'grid' ? 'grid_view' : 'view_list'}</span>
-                  </button>
-                ))}
-              </div>
-              <button className="p-2 text-slate-500 hover:text-white hover:bg-white/5 rounded-xl transition-all">
-                <span className="material-symbols-outlined">notifications</span>
-              </button>
-              {profile?.is_admin && (
-                <button onClick={() => setShowAdmin(true)} className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-xl transition-all">
-                  <span className="material-symbols-outlined">admin_panel_settings</span>
-                </button>
-              )}
-            </div>
-            <button 
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 bg-primary hover:bg-primary-container text-on-primary px-5 py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-lg shadow-primary/10"
-            >
-              <span className="material-symbols-outlined text-sm font-bold">add</span>
-              İçerik Ekle
-            </button>
-          </div>
-        </header>
+        <Header
+          search={search}
+          setSearch={setSearch}
+          gv={gv}
+          setGv={setGv}
+          isOnline={isOnline}
+          getQueue={getQueue}
+          clearSyncQueue={clearSyncQueue}
+          profile={profile}
+          setShowAdmin={setShowAdmin}
+          setShowModal={setShowModal}
+        />
 
-        <div className="pt-28 px-8 pb-12 flex flex-col gap-8">
+        <div className="pt-20 md:pt-28 px-4 md:px-8 pb-12 flex flex-col gap-6 md:gap-8">
           {view === 'settings' ? (
             /* Membership / Profile Section */
             <div className="max-w-6xl mx-auto w-full space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* Profile Header */}
               <section className="flex flex-col lg:flex-row gap-8 items-start mt-6">
-                <div className="relative group">
-                  <div 
-                    className="w-32 h-32 md:w-44 md:h-44 rounded-[2.5rem] overflow-hidden bg-surface-container-highest shadow-2xl transition-all duration-500 group-hover:shadow-primary/10 border border-white/5"
-                  >
+                <div className="relative group cursor-pointer" onClick={() => setShowProfile(true)}>
+                  <div className="w-32 h-32 md:w-44 md:h-44 rounded-[2.5rem] overflow-hidden bg-surface-container-highest shadow-2xl transition-all duration-500 group-hover:shadow-primary/10 border border-white/5 relative">
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center p-4 text-center text-[10px] font-black uppercase tracking-widest text-slate-500 bg-white/5">
-                        FOTOĞRAF YÜKLE
+                      <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-white/5 text-slate-500">
+                        <span className="material-symbols-outlined text-4xl mb-2 opacity-50">face</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">FOTOĞRAF YÜKLE</span>
                       </div>
                     )}
+                    
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center text-white">
+                      <span className="material-symbols-outlined text-3xl mb-1">add_a_photo</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest">DEĞİŞTİR</span>
+                    </div>
+                  </div>
+                  
+                  {/* Floating Action Badge */}
+                  <div className="absolute -bottom-2 -right-2 bg-primary p-3 rounded-2xl border-4 border-background shadow-xl text-on-primary group-hover:scale-110 transition-transform">
+                    <span className="material-symbols-outlined text-sm font-bold">edit</span>
                   </div>
                 </div>
                 <div className="flex-1 space-y-6">
@@ -656,14 +665,9 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                       <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white">{profile?.username || session.user.email?.split('@')[0]}</h1>
                       <p className="text-slate-400 font-bold mt-2 tracking-tight">{session.user.email}</p>
                     </div>
-                    <button 
-                      onClick={triggerSync}
-                      disabled={syncing}
-                      className="flex items-center gap-3 px-6 py-3 bg-white/5 border border-white/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-primary hover:bg-white/10 transition-all active:scale-95"
-                    >
-                      <span className={`material-symbols-outlined text-base ${syncing ? 'animate-spin' : ''}`}>sync</span>
-                      {syncing ? 'EŞİTLENİYOR...' : 'ŞİMDİ BULUTLA EŞİTLE'}
-                    </button>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Quiet/invisible sync processes happen automatically. Removed manual queue clearing. */}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-4">
                     {[
@@ -715,16 +719,6 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                           value={profForm.bio}
                           onChange={e => setProfForm(f => ({...f, bio: e.target.value}))}
                         ></textarea>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Profil Fotoğrafı URL</label>
-                        <input 
-                          className="w-full bg-white/5 border border-white/5 rounded-2xl px-5 py-3.5 text-on-surface focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none font-bold" 
-                          type="text" 
-                          value={profForm.avatar} 
-                          onChange={e => setProfForm(f => ({...f, avatar: e.target.value}))}
-                          placeholder="https://..."
-                        />
                       </div>
                       <div className="pt-4 flex justify-end gap-4">
                         <button className="px-6 py-3 rounded-2xl font-bold text-slate-500 hover:text-white hover:bg-white/5 transition-all text-sm uppercase tracking-widest" type="button" onClick={() => profile && setProfForm({ username: profile.username || '', bio: profile.bio || '', avatar: profile.avatar_url || '' })}>Vazgeç</button>
@@ -903,89 +897,18 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
             </div>
           ) : (
             <div className={`grid gap-6 ${gv === 'grid' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1'}`}>
-              {it.map(item => {
-                const cat = cats.find(c => c.id === item.category_id)
-                const tl = item.type === 'reel' ? 'Reels' : item.type === 'carousel' ? 'Carousel' : 'Gönderi'
-                const tc = item.type === 'reel' ? 'bg-pink-500/20 text-pink-400' : item.type === 'carousel' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-primary/20 text-primary'
-                const proxied = item.thumbnail_url ? `https://images.weserv.nl/?url=${encodeURIComponent(item.thumbnail_url)}&w=600&h=600&fit=cover` : null
-                
-                return (
-                  <div 
-                    key={item.id} 
-                    onClick={() => { setSelectedItem(item); setTempNote(item.notes || ''); }}
-                    className={`group bg-surface-container-low border border-white/5 rounded-[2.5rem] overflow-hidden transition-all duration-300 hover:border-white/10 hover:translate-y-[-4px] cursor-pointer shadow-lg hover:shadow-primary/5 ${gv === 'list' ? 'flex' : 'flex flex-col'}`}
-                  >
-                    {/* Media Container */}
-                    <div className={`relative overflow-hidden bg-surface-container-high ${gv === 'list' ? 'w-48 aspect-video' : 'aspect-square'}`}>
-                      {proxied ? (
-                        <img 
-                          src={proxied} 
-                          alt={item.title} 
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-700">
-                          <span className="material-symbols-outlined text-5xl">{item.type === 'reel' ? 'movie' : 'image'}</span>
-                        </div>
-                      )}
-                      
-                      {/* Badge */}
-                      <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${tc} backdrop-blur-md border border-white/5`}>
-                        {tl}
-                      </div>
-
-                      {/* Action Overlay */}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                         <button 
-                          onClick={(e) => { e.stopPropagation(); toggleFav(item.id, item.is_favorite); }}
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${item.is_favorite ? 'bg-amber-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                        >
-                          <span className="material-symbols-outlined text-xl">{item.is_favorite ? 'star' : 'star_outline'}</span>
-                        </button>
-                        {item.instagram_url && (
-                           <button 
-                            onClick={(e) => { e.stopPropagation(); window.open(item.instagram_url, '_blank'); }}
-                            className="w-10 h-10 rounded-full bg-white/10 text-white hover:bg-white/20 flex items-center justify-center transition-all"
-                          >
-                            <span className="material-symbols-outlined text-xl">open_in_new</span>
-                          </button>
-                        )}
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); delItem(item.id); }}
-                          className="w-10 h-10 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
-                        >
-                          <span className="material-symbols-outlined text-xl">delete</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-6 flex flex-col flex-1">
-                      {cat && (
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }}></div>
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest leading-none">{cat.name}</span>
-                        </div>
-                      )}
-                      <h4 className="text-base font-bold text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors">{item.title || 'İsimsiz İçerik'}</h4>
-                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mb-4 flex-1">{item.description || 'Açıklama bulunmuyor...'}</p>
-                      
-                      <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight">
-                          {new Date(item.created_at).toLocaleDateString('tr-TR')}
-                        </span>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setChatObj({ open:true, item, messages:[], input:'', loading:false }) }}
-                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/5 text-primary hover:bg-primary hover:text-on-primary transition-all text-[10px] font-black uppercase tracking-wider"
-                        >
-                          <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                          AI ASİSTAN
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+              {it.map(item => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  cats={cats}
+                  gv={gv}
+                  onSelect={(selected) => { setSelectedItem(selected); setTempNote(selected.notes || ''); }}
+                  onToggleFav={(id, isFav) => toggleFav(id, isFav)}
+                  onDelete={(id) => delItem(id)}
+                  onOpenChat={(chatItem) => setChatObj({ open: true, item: chatItem, messages: [], input: '', loading: false })}
+                />
+              ))}
             </div>
           )}
         </section>
@@ -1205,13 +1128,10 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
                           setChatObj(c => ({ 
                             ...c, 
                             open: true, 
-                            item: item, 
-                            messages: [...c.messages, { role: 'user', content: btn.q }],
-                            input: btn.q,
-                            loading: true 
+                            item: item 
                           }));
-                          // Automatically send the quick message
-                          setTimeout(() => handleSendChatMessage(), 100);
+                          // Send the message immediately via the new direct handler
+                          handleSendChatMessage(btn.q);
                         }}
                         className="text-left p-6 bg-primary/5 hover:bg-primary/10 border border-primary/10 rounded-[2rem] transition-all group active:scale-95"
                       >
@@ -1271,12 +1191,21 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
               {form.url.includes('instagram.com') && (
                 <div className="bg-surface-container-high rounded-3xl overflow-hidden border border-white/5 animate-in slide-in-from-top-4 duration-500 mb-2 shadow-2xl">
                   <div className="aspect-video relative bg-black/20 flex items-center justify-center overflow-hidden">
-                    {prevData?.thumb ? (
-                      <img src={prevData.thumb} alt="Preview" className="w-full h-full object-cover" />
+                    {prevLoading ? (
+                      <div className="flex flex-col items-center gap-2 text-slate-400">
+                        <span className="material-symbols-outlined text-4xl animate-spin text-primary">sync</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Önizleme Alınıyor...</span>
+                      </div>
+                    ) : prevData?.thumb ? (
+                      <img 
+                        src={prevData.thumb.startsWith('http') ? `https://images.weserv.nl/?url=${encodeURIComponent(prevData.thumb)}&w=800` : prevData.thumb} 
+                        alt="Preview" 
+                        className="w-full h-full object-cover" 
+                      />
                     ) : (
                       <div className="flex flex-col items-center gap-2 text-slate-600">
                         <span className="material-symbols-outlined text-4xl animate-pulse">downloading</span>
-                        <span className="text-[10px] font-black uppercase tracking-widest">Önizleme Alınıyor...</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Önizleme Bekleniyor...</span>
                       </div>
                     )}
                     <div className="absolute top-4 left-4 flex gap-2">
@@ -1482,57 +1411,154 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
       )}
 
       {/* ── PROFILE MODAL ─────────────────────────────────── */}
-      {showProfile && (
+      {showProfile && (() => {
+        const handleFileChange = (e) => {
+          const file = e.target.files?.[0]
+          if (!file) return
+          if (file.size > 5 * 1024 * 1024) { showToast('Dosya 5MB\'dan küçük olmalı!', 'err'); return }
+          const reader = new FileReader()
+          reader.onload = ev => setImageToCrop(ev.target.result)
+          reader.readAsDataURL(file)
+          e.target.value = ''
+        }
+
+        const handleUploadCropped = async () => {
+          setAvatarUploading(true)
+          showToast('Fotoğraf yükleniyor...', 'ok')
+          
+          try {
+            const croppedImageBlob = await getCroppedImg(imageToCrop, croppedAreaPixels, 0)
+            const ext = 'jpeg'
+            const fileName = `${session.user.id}_${Date.now()}.${ext}`
+            
+            const { error } = await supabase.storage
+              .from('avatars')
+              .upload(fileName, croppedImageBlob, { upsert: true, contentType: 'image/jpeg' })
+            
+            if (error) throw error
+            
+            const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName)
+            
+            // Profili tam güvenli (optimistic) şekilde güncelle
+            const updatedProf = { ...profile, avatar_url: publicUrl }
+            setProfile(updatedProf)
+            setLocal('profile', updatedProf)
+            
+            supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', session.user.id)
+              .then(({error: updateErr}) => {
+                if (updateErr) addToQueue('UPDATE', 'profiles', { id: session.user.id, avatar_url: publicUrl })
+              })
+              
+            showToast('Profil fotoğrafı güncellendi! ✨', 'ok')
+            setShowProfile(false)
+            setImageToCrop(null)
+          } catch (e) {
+            console.error(e)
+            showToast('Yükleme başarısız: ' + e.message, 'err')
+          }
+          setAvatarUploading(false)
+        }
+
+        return (
         <div className="fixed inset-0 bg-background/90 backdrop-blur-xl z-[150] flex items-center justify-center p-4">
-          <div className="bg-surface-container-low w-full max-w-sm rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden p-8 animate-in fade-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-xl font-black text-white tracking-tight">Profil</h3>
-              <button onClick={() => setShowProfile(false)} className="text-slate-500 hover:text-white transition-colors">
+          <div className="bg-surface-container-low w-full max-w-md rounded-[2.5rem] border border-white/10 shadow-2xl overflow-hidden p-8 animate-in fade-in zoom-in duration-300 flex flex-col items-center">
+            <div className="flex w-full justify-between items-center mb-6">
+              <h3 className="text-xl font-black text-white tracking-tight">Kusursuz Kareyi Seç</h3>
+              <button onClick={() => { setShowProfile(false); setImageToCrop(null); }} className="text-slate-500 hover:text-white transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             
-            <div className="flex flex-col items-center gap-6">
-              <div className="relative group">
-                {avatarInput ? (
-                  <img src={avatarInput} className="w-24 h-24 rounded-[2rem] object-cover border-4 border-white/5 shadow-2xl" alt="avatar" />
-                ) : (
-                  <div className="w-24 h-24 rounded-[2rem] bg-primary/20 flex items-center justify-center text-primary text-4xl font-black border-4 border-white/5">
-                    {(session.user.email || 'U')[0].toUpperCase()}
+            <div className="flex flex-col items-center gap-6 w-full">
+              {imageToCrop ? (
+                <div className="w-full space-y-6">
+                  <div className="relative w-full h-[300px] bg-black/50 rounded-3xl overflow-hidden border border-white/10 ring-4 ring-primary/20">
+                    <Cropper
+                      image={imageToCrop}
+                      crop={crop}
+                      zoom={zoom}
+                      aspect={1}
+                      cropShape="rect"
+                      showGrid={false}
+                      onCropChange={setCrop}
+                      onZoomChange={setZoom}
+                      onCropComplete={(croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
+                      style={{
+                        containerStyle: { width: '100%', height: '100%' },
+                        cropAreaStyle: { border: '2px solid rgba(255, 255, 255, 0.8)', borderRadius: '1rem' }
+                      }}
+                    />
                   </div>
-                )}
-                <div className="absolute -bottom-2 -right-2 bg-background p-2 rounded-xl border border-white/5 shadow-lg">
-                  <span className="material-symbols-outlined text-primary text-xl">face_retouching_natural</span>
-                </div>
-              </div>
+                  
+                  <div className="flex items-center gap-4 px-2">
+                    <span className="material-symbols-outlined text-slate-500 text-sm">zoom_out</span>
+                    <input 
+                      type="range" value={zoom} min={1} max={3} step={0.1}
+                      onChange={(e) => setZoom(Number(e.target.value))}
+                      className="flex-1 w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
+                    />
+                    <span className="material-symbols-outlined text-slate-500 text-sm">zoom_in</span>
+                  </div>
 
-              <div className="w-full space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1 text-center block">PROFİL FOTOĞRAFI URL</label>
-                  <input 
-                    type="text"
-                    value={avatarInput}
-                    onChange={e => setAvatarInput(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full bg-surface-container-high border-none rounded-2xl py-3 px-4 text-xs text-white placeholder:text-slate-700 focus:ring-2 focus:ring-primary/20 transition-all font-medium"
-                  />
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setImageToCrop(null)}
+                      className="flex-1 py-4 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 font-black text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 border border-white/5"
+                    >
+                      GERİ AL
+                    </button>
+                    <button 
+                      disabled={avatarUploading}
+                      onClick={handleUploadCropped}
+                      className="flex-1 py-4 rounded-2xl bg-primary hover:bg-primary-container text-on-primary font-black text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 shadow-lg flex justify-center items-center gap-2"
+                    >
+                      {avatarUploading ? <span className="material-symbols-outlined animate-spin text-sm">refresh</span> : null}
+                      {avatarUploading ? 'YÜKLENİYOR' : 'KIRP VE YÜKLE'}
+                    </button>
+                  </div>
                 </div>
-                
-                <button 
-                  onClick={async () => {
-                    const { error } = await supabase.from('profiles').update({ avatar_url: avatarInput }).eq('id', session.user.id)
-                    if(!error) { setProfile(p => ({...p, avatar_url: avatarInput})); showToast('Profil güncellendi!', 'ok'); setShowProfile(false); }
-                    else showToast('Hata: '+error.message, 'err')
-                  }}
-                  className="w-full py-4 rounded-2xl bg-white/5 hover:bg-white/10 text-primary font-black text-[10px] uppercase tracking-[0.2em] transition-all active:scale-95 border border-white/5"
-                >
-                  DEĞİŞİKLİKLERİ KAYDET
-                </button>
-              </div>
+              ) : (
+                <div className="w-full space-y-6">
+                  <div className="relative">
+                    {profile?.avatar_url ? (
+                      <div className="flex justify-center flex-col items-center">
+                        <img 
+                          src={`https://images.weserv.nl/?url=${encodeURIComponent(profile.avatar_url)}&w=200&h=200&fit=cover`} 
+                          className="w-32 h-32 rounded-[2.5rem] object-cover border-4 border-primary/20 shadow-2xl mb-4" 
+                          alt="avatar" 
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex justify-center flex-col items-center">
+                        <div className="w-32 h-32 rounded-[2.5rem] bg-primary/20 flex items-center justify-center text-primary text-5xl font-black border-4 border-white/5 mb-4">
+                          {(session.user.email || 'U')[0].toUpperCase()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <label className="w-full cursor-pointer group">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleFileChange}
+                    />
+                    <div className="w-full flex flex-col items-center justify-center gap-3 py-10 rounded-[2rem] border-2 border-dashed border-primary/30 group-hover:bg-primary/5 group-hover:border-primary/60 transition-all font-black text-xs uppercase tracking-[0.2em] text-primary cursor-pointer active:scale-95 shadow-inner bg-background/50">
+                      <div className="p-4 bg-primary/10 rounded-2xl mb-2 group-hover:scale-110 transition-transform">
+                        <span className="material-symbols-outlined text-3xl font-bold">add_a_photo</span>
+                      </div>
+                      BİLGİSAYARDAN SEÇ
+                      <span className="text-[9px] text-slate-500 tracking-widest mt-1">İstediğin gibi kesip boyutlandır</span>
+                    </div>
+                  </label>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* â”€â”€ ADMIN MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showAdmin && (
@@ -1587,33 +1613,13 @@ Kullanıcının sorusunu bu bağlama göre, doğrudan, gereksiz laf kalabalığ�
         </div>
       )}
 
-      {/* MOBILE NAV */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-background/80 backdrop-blur-2xl border-t border-white/5 flex items-center justify-around px-4 z-50">
-        {[
-          { id: 'all', icon: 'grid_view' },
-          { id: 'reels', icon: 'movie' },
-          { id: 'fav', icon: 'star' },
-          { id: 'settings', icon: 'settings' }
-        ].map(item => (
-          <button 
-            key={item.id}
-            onClick={() => { setView(item.id); setCurrentCat(null); }}
-            className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all ${
-              view === item.id ? 'bg-primary/10 text-primary' : 'text-slate-500 hover:text-on-surface'
-            }`}
-          >
-            <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: view === item.id ? "'FILL' 1" : "" }}>{item.icon}</span>
-          </button>
-        ))}
-      </nav>
-
-      {/* MOBILE FAB */}
-      <button 
-        onClick={() => setShowModal(true)}
-        className="md:hidden fixed bottom-24 right-6 w-16 h-16 bg-primary text-on-primary rounded-2xl shadow-2xl shadow-primary/40 flex items-center justify-center z-50 active:scale-90 transition-transform"
-      >
-        <span className="material-symbols-outlined text-3xl font-bold">add</span>
-      </button>
+      {/* MOBILE BOTTOM NAVIGATION & FAB */}
+      <MobileNav
+        view={view}
+        setView={setView}
+        setCurrentCat={setCurrentCat}
+        setShowModal={setShowModal}
+      />
     </div>
   )
 }

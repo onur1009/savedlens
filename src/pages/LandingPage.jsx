@@ -50,6 +50,29 @@ const css = `
   .content-card:hover { border-color: rgba(99,102,241,0.3); transform: translateY(-4px); }
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-thumb { background: #1d2025; border-radius: 10px; }
+
+  /* RESPONSIVE STYLES */
+  .lp-header { padding: 0 40px; height: 120px; }
+  .lp-logo { height: 150px; }
+  .lp-nav { display: flex; }
+  .lp-auth-btns { display: flex; }
+  .lp-hero-pad { padding: 60px 24px 80px; }
+  .lp-hero-h1 { font-size: clamp(38px, 6vw, 72px); line-height: 1.05; }
+  .lp-features { padding: 96px 40px; max-width: 1200px; margin: 0 auto; }
+  .lp-hw { padding: 96px 40px; background: rgba(19,21,26,0.5); }
+  
+  @media (max-width: 768px) {
+    .lp-header { padding: 0 16px; height: 80px; }
+    .lp-logo { height: 100px; }
+    .lp-nav { display: none; }
+    .btn-ghost.lp-hide-mobile { display: none; }
+    .lp-hero-pad { padding: 40px 16px 60px; min-height: 70vh !important; }
+    .lp-hero-h1 { font-size: clamp(32px, 8vw, 42px); line-height: 1.15; }
+    .animated-dashboard { min-height: 240px !important; }
+    .perspective-wrap { margin-top: 32px !important; }
+    .lp-features, .lp-hw { padding: 64px 20px; }
+    .glass-card { padding: 10px 16px !important;  }
+  }
 `
 
 export default function LandingPage({ onGoToAuth, onGoToHow, onGoToHelp, onGoToPrivacy, onGoToTerms }) {
@@ -58,17 +81,17 @@ export default function LandingPage({ onGoToAuth, onGoToHow, onGoToHelp, onGoToP
       <style dangerouslySetInnerHTML={{ __html: css }} />
 
       {/* NAV */}
-      <header style={{ position:'fixed', top:0, width:'100%', zIndex:50, display:'flex', justifyContent:'space-between', alignItems:'center', padding:'0 40px', height:120, background:'rgba(12,14,18,0.85)', backdropFilter:'blur(14px)', borderBottom:'1px solid rgba(99,102,241,0.08)' }}>
+      <header className="lp-header" style={{ position:'fixed', top:0, width:'100%', zIndex:50, display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(12,14,18,0.85)', backdropFilter:'blur(14px)', borderBottom:'1px solid rgba(99,102,241,0.08)' }}>
         <div style={{ display:'flex', alignItems:'center', cursor:'pointer' }} onClick={() => window.scrollTo({top:0, behavior:'smooth'})}>
-          <img src={logo} alt="SavedLens Logo" style={{ height:150, width:'auto', objectFit:'contain', marginTop:20 }} />
+          <img className="lp-logo" src={logo} alt="SavedLens Logo" style={{ width:'auto', objectFit:'contain', marginTop:20 }} />
         </div>
-        <nav style={{ display:'flex', gap:32, alignItems:'center' }}>
+        <nav className="lp-nav" style={{ gap:32, alignItems:'center' }}>
           <a href="#features" className="nav-link active">Özellikler</a>
           <a href="#how" className="nav-link" onClick={e => { e.preventDefault(); onGoToHow(); }}>Nasıl Çalışır?</a>
           <a href="#cta" className="nav-link">Başla</a>
         </nav>
-        <div style={{ display:'flex', gap:10 }}>
-          <button className="btn-ghost" onClick={onGoToAuth}>Giriş Yap</button>
+        <div className="lp-auth-btns" style={{ gap:10 }}>
+          <button className="btn-ghost lp-hide-mobile" onClick={onGoToAuth}>Giriş Yap</button>
           <button className="btn-primary" onClick={onGoToAuth} style={{ padding:'9px 22px', fontSize:14 }}>Ücretsiz Kayıt Ol</button>
         </div>
       </header>
@@ -76,13 +99,13 @@ export default function LandingPage({ onGoToAuth, onGoToHow, onGoToHelp, onGoToP
       <main style={{ paddingTop:76 }}>
 
         {/* HERO */}
-        <section className="hero-gradient" style={{ minHeight:'88vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', padding:'60px 24px 80px', overflow:'hidden' }}>
+        <section className="hero-gradient lp-hero-pad" style={{ minHeight:'88vh', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', overflow:'hidden' }}>
           <div style={{ maxWidth:820, margin:'0 auto', zIndex:1 }} className="fade-up">
             <div style={{ display:'inline-flex', alignItems:'center', gap:8, background:'rgba(99,102,241,0.1)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:100, padding:'6px 16px', marginBottom:28, fontSize:12, color:'#a5b4fc', fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase' }}>
               <span className="material-symbols-outlined pulse-icon" style={{ fontSize:14 }}>auto_awesome</span>
               AI Destekli Dijital Hafıza
             </div>
-            <h1 style={{ fontSize:'clamp(38px, 6vw, 72px)', fontWeight:800, letterSpacing:'-2px', lineHeight:1.05, marginBottom:24, color:'#f8fafc' }}>
+            <h1 className="lp-hero-h1" style={{ fontWeight:800, letterSpacing:'-2px', marginBottom:24, color:'#f8fafc' }}>
               Instagram hafızanı<br />
               <span style={{ color:'#818cf8' }}>AI ile canlandır</span>
             </h1>
@@ -91,10 +114,10 @@ export default function LandingPage({ onGoToAuth, onGoToHow, onGoToHelp, onGoToP
               dijital arşivini organize eder, özetler ve sorularına anında yanıt verir.
             </p>
             <div className="fade-up-3" style={{ display:'flex', gap:16, justifyContent:'center', flexWrap:'wrap', alignItems:'center' }}>
-              <button className="btn-primary" onClick={onGoToAuth} style={{ padding:'14px 36px', fontSize:16, borderRadius:14 }}>
+              <button className="btn-primary w-full sm:w-auto" onClick={onGoToAuth} style={{ padding:'14px 36px', fontSize:16, borderRadius:14 }}>
                 Ücretsiz Başla
               </button>
-              <button className="btn-ghost" onClick={onGoToHow} style={{ display:'flex', alignItems:'center', gap:6, fontSize:16 }}>
+              <button className="btn-ghost w-full sm:w-auto" onClick={onGoToHow} style={{ display:'flex', alignItems:'center', justifyContent: 'center', gap:6, fontSize:16 }}>
                 <span className="material-symbols-outlined" style={{ fontSize:20 }}>play_circle</span>
                 Nasıl Çalışır?
               </button>
@@ -164,7 +187,7 @@ export default function LandingPage({ onGoToAuth, onGoToHow, onGoToHelp, onGoToP
         </section>
 
         {/* FEATURES */}
-        <section id="features" style={{ padding:'96px 40px', maxWidth:1200, margin:'0 auto' }}>
+        <section id="features" className="lp-features">
           <div style={{ textAlign:'center', marginBottom:64 }}>
             <div style={{ fontSize:11, color:'#818cf8', fontWeight:800, letterSpacing:'0.18em', textTransform:'uppercase', marginBottom:14 }}>Neden SavedLens?</div>
             <h2 style={{ fontSize:'clamp(28px, 4vw, 42px)', fontWeight:800, letterSpacing:'-1px', color:'#f1f5f9' }}>Her şeyi kaydet,<br /><span style={{ color:'#818cf8' }}>hiçbir şeyi unutma</span></h2>
@@ -213,7 +236,7 @@ export default function LandingPage({ onGoToAuth, onGoToHow, onGoToHelp, onGoToP
 
         {/* CTA */}
         <section id="cta" style={{ padding:'96px 40px' }}>
-          <div style={{ maxWidth:860, margin:'0 auto', background:'linear-gradient(135deg, #1d2025 0%, #0c0e12 100%)', borderRadius:40, padding:'72px 64px', textAlign:'center', border:'1px solid rgba(255,255,255,0.05)', position:'relative', overflow:'hidden' }}>
+          <div className="lp-cta-wrap" style={{ maxWidth:860, margin:'0 auto' }}>
             <div style={{ position:'absolute', top:-60, right:-60, width:200, height:200, background:'rgba(99,102,241,0.1)', borderRadius:'50%', filter:'blur(80px)' }} />
             <div style={{ position:'absolute', bottom:-60, left:-60, width:180, height:180, background:'rgba(167,139,250,0.08)', borderRadius:'50%', filter:'blur(80px)' }} />
             <h2 style={{ fontSize:'clamp(26px, 4vw, 44px)', fontWeight:800, letterSpacing:'-1.5px', lineHeight:1.15, marginBottom:20, position:'relative', zIndex:1, color:'#f8fafc' }}>

@@ -5,7 +5,6 @@ import Dashboard from './pages/Dashboard'
 import LandingPage from './pages/LandingPage'
 import HowToUsePage from './pages/HowToUsePage'
 import { HelpCenterPage, PrivacyPolicyPage, TermsOfUsePage } from './pages/InfoPages'
-import logo from './assets/logo.png'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -14,10 +13,15 @@ export default function App() {
   // page: 'landing'|'how'|'auth'|'help'|'privacy'|'terms'
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setLoading(false)
-    })
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        setSession(data.session)
+        setLoading(false)
+      })
+      .catch(err => {
+        console.error('getSession error:', err)
+        setLoading(false)
+      })
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_, session) => setSession(session)
     )
