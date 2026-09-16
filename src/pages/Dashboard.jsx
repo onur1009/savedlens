@@ -585,10 +585,10 @@ KURALLARIN:
   }
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0a0a0f', color:'#888', fontFamily:'Manrope, sans-serif' }}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0c0e12', color:'#94a3b8', fontFamily:'Manrope, sans-serif' }}>
       <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ width:12, height:12, borderRadius:'50%', background:'#6366f1', animation:'pulse 1.5s infinite' }} />
-        <span style={{ fontWeight:700, letterSpacing:'0.05em' }}>Y\u00fckleniyor...</span>
+        <div style={{ width:12, height:12, borderRadius:'50%', background:'#818cf8', animation:'pulse 1.5s infinite' }} />
+        <span style={{ fontWeight:700, letterSpacing:'0.05em' }}>Yükleniyor...</span>
       </div>
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.9); } }`}</style>
     </div>
@@ -615,7 +615,7 @@ KURALLARIN:
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 md:ml-72 flex flex-col min-h-screen bg-background pb-20 md:pb-0">
+      <main className="flex-1 md:ml-64 flex flex-col min-h-screen bg-background pb-20 md:pb-0">
         {/* TopAppBar */}
         <Header
           search={search}
@@ -879,20 +879,20 @@ KURALLARIN:
 
           {/* Cards Area */}
           {it.length === 0 ? (
-            <div className="flex-1 min-h-[400px] flex flex-col items-center justify-center text-center p-12 bg-surface-container-low rounded-[2.5rem] border border-white/5 group">
-              <div className="w-24 h-24 mb-6 rounded-full bg-surface-container-high flex items-center justify-center relative transition-transform group-hover:scale-105 duration-500">
-                <span className="material-symbols-outlined text-4xl text-primary/60">archive</span>
+            <div className="flex-1 min-h-[340px] flex flex-col items-center justify-center text-center p-8 md:p-12 bg-surface-container-low/80 rounded-3xl border border-white/5 group">
+              <div className="w-16 h-16 mb-4 rounded-2xl bg-surface-container-high flex items-center justify-center relative transition-transform group-hover:scale-105 duration-300">
+                <span className="material-symbols-outlined text-3xl text-primary">archive</span>
               </div>
-              <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">Henüz içerik yok</h2>
-              <p className="text-slate-400 max-w-sm mb-8 leading-relaxed font-medium">
-                Arşivin bomboş görünüyor. Sağ üstteki <span className="text-primary font-bold inline-flex items-center gap-1 mx-1"><span className="material-symbols-outlined text-sm">add</span> İçerik Ekle</span> butonu ile favori içeriklerini kaydetmeye başla.
+              <h2 className="text-xl font-bold text-white mb-2 tracking-tight">Henüz içerik kaydedilmedi</h2>
+              <p className="text-slate-400 max-w-sm mb-6 text-sm leading-relaxed font-medium">
+                Arşivin şu an boş. Sağ üstteki <span className="text-primary font-bold inline-flex items-center gap-1 mx-1"><span className="material-symbols-outlined text-xs">add</span> İçerik Ekle</span> butonu ile ilk içeriğini ekleyebilirsin.
               </p>
               <button 
                 onClick={() => setShowModal(true)}
-                className="flex items-center gap-3 px-8 py-3.5 bg-surface-container-high hover:bg-white/5 text-white rounded-2xl font-bold text-sm transition-all border border-white/5 shadow-xl"
+                className="flex items-center gap-2 px-6 py-3 bg-primary text-on-primary hover:bg-primary-container rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 active:scale-95"
               >
-                <span className="material-symbols-outlined text-lg">explore</span>
-                Keşfetmeye Başla
+                <span className="material-symbols-outlined text-base">add</span>
+                İlk İçeriğini Ekle
               </button>
             </div>
           ) : (
@@ -1560,7 +1560,7 @@ KURALLARIN:
         )
       })()}
 
-      {/* â”€â”€ ADMIN MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ADMIN MODAL */}
       {showAdmin && (
         <div className="fixed inset-0 bg-background/90 backdrop-blur-xl z-[200] flex items-center justify-center p-4">
           <div className="bg-surface-container-low w-full max-w-2xl max-h-[80vh] rounded-[3rem] border border-amber-500/20 shadow-2xl overflow-hidden flex flex-col">

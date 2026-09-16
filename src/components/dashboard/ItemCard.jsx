@@ -15,7 +15,7 @@ export default function ItemCard({
   return (
     <div 
       onClick={() => onSelect(item)}
-      className={`group bg-surface-container-low border border-white/5 rounded-[2.5rem] overflow-hidden transition-all duration-300 hover:border-white/10 hover:translate-y-[-4px] cursor-pointer shadow-lg hover:shadow-primary/5 ${gv === 'list' ? 'flex' : 'flex flex-col'}`}
+      className={`group bg-surface-container-low border border-white/5 rounded-2xl overflow-hidden transition-all duration-300 hover:border-white/10 hover:translate-y-[-3px] cursor-pointer shadow-lg hover:shadow-primary/5 ${gv === 'list' ? 'flex' : 'flex flex-col'}`}
     >
       {/* Media Container */}
       <div className={`relative overflow-hidden bg-surface-container-high ${gv === 'list' ? 'w-48 aspect-video' : 'aspect-square'}`}>

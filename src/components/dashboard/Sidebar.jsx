@@ -15,9 +15,9 @@ export default function Sidebar({
   onSignOut,
 }) {
   return (
-    <aside className="fixed left-0 top-0 h-full w-72 bg-background border-r border-white/5 flex flex-col z-40 hidden md:flex pt-8 pb-8">
-      <div className="px-8 mb-10 flex items-center">
-        <img src={logo} alt="SavedLens" style={{ width: 150, height: 150, objectFit: 'contain', marginTop: 10 }} />
+    <aside className="fixed left-0 top-0 h-full w-64 bg-background border-r border-white/5 flex flex-col z-40 hidden md:flex pt-6 pb-6">
+      <div className="px-6 mb-6 flex items-center">
+        <img src={logo} alt="SavedLens" className="h-10 w-auto object-contain" />
       </div>
 
       <nav className="flex-1 px-4 space-y-8 overflow-y-auto no-scrollbar">

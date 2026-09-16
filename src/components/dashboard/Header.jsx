@@ -13,7 +13,7 @@ export default function Header({
   setShowModal,
 }) {
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-72 z-50 bg-background/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6 h-16 md:h-20 border-b border-white/5 gap-3 md:gap-4">
+    <header className="fixed top-0 right-0 left-0 md:left-64 z-50 bg-background/90 backdrop-blur-xl flex items-center justify-between px-4 md:px-8 h-16 md:h-18 border-b border-white/5 gap-3 md:gap-4">
       <div className="md:hidden flex-shrink-0">
         <img src={logo} alt="Logo" style={{ width: 120, height: 40, objectFit: 'contain' }} />
       </div>
