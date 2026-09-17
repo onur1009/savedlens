@@ -25,11 +25,12 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
+    <div className="flex h-[100dvh] overflow-hidden bg-[var(--bg-base)]">
       <ExtensionSyncBridge userId={user.id} />
       <Sidebar user={sidebarUser} />
-      <div className="flex-1 flex flex-col overflow-hidden md:ml-64">
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-24 md:pb-6">
+      {/* Main content: fills remaining space next to sidebar */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0 md:ml-64">
+        <main className="flex-1 overflow-y-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 md:pb-8 min-h-0">
           {children}
         </main>
       </div>

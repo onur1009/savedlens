@@ -9,15 +9,21 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
   // ── Auto-Sync Token on SavedLens Dashboard ────────────────────
   if (window.location.hostname.includes('savedlens.vercel.app') || window.location.hostname.includes('localhost')) {
     try {
+      // Read any existing token from localStorage and store in extension storage
       const syncToken = localStorage.getItem('savedlens_sync_token')
       if (syncToken && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.set({ savedlens_sync_token: syncToken })
+        chrome.storage.local.set({ savedlens_sync_token: syncToken }, () => {
+          console.log('[SavedLens] Sync token auto-saved to extension storage:', syncToken.slice(0, 8) + '...')
+        })
       }
     } catch {}
 
+    // Listen for dynamic token updates dispatched by ExtensionSyncBridge
     window.addEventListener('savedlens-sync-token', (e) => {
       if (e.detail && e.detail.token && chrome.storage && chrome.storage.local) {
-        chrome.storage.local.set({ savedlens_sync_token: e.detail.token })
+        chrome.storage.local.set({ savedlens_sync_token: e.detail.token }, () => {
+          console.log('[SavedLens] Token updated from dashboard bridge.')
+        })
       }
     })
   }

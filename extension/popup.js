@@ -4,7 +4,7 @@
  */
 
 const DEFAULT_SERVER = 'https://savedlens.vercel.app'
-const DEFAULT_TOKEN = '6f5cfc25-3063-4084-a610-2ec60705fe00' // Verified owner account
+const DEFAULT_TOKEN = '' // Users must paste their Sync Token from savedlens.vercel.app/dashboard/settings/sync
 
 document.addEventListener('DOMContentLoaded', async () => {
   const statusEl = document.getElementById('tab-status')
@@ -42,12 +42,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (res.savedlens_sync_token) {
         tokenInput.value = res.savedlens_sync_token
+        tokenStatus.textContent = 'Token kayıtlı ✓'
+        tokenStatus.style.color = 'var(--success)'
       } else {
-        tokenInput.value = DEFAULT_TOKEN
+        tokenInput.value = ''
+        tokenInput.placeholder = 'savedlens.vercel.app/dashboard/settings/sync sayfasından kopyalayın'
+        tokenStatus.textContent = '⚠ Token girilmedi'
+        tokenStatus.style.color = 'var(--amber)'
       }
-
-      tokenStatus.textContent = 'Bağlı ✓'
-      tokenStatus.style.color = 'var(--success)'
     })
   }
 
@@ -152,6 +154,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     return false
   }
 
+  // ── Helper: validate token before API calls ──────────────────
+  function validateToken() {
+    const token = tokenInput.value.trim()
+    if (!token) {
+      log('⚠️ Kişisel Eşitleme Anahtarı (Token) girilmemiş!')
+      log('💡 savedlens.vercel.app/dashboard/settings/sync sayfasını açmak için buraya tıklayın.')
+      // Open sync settings to get token
+      chrome.tabs.create({ url: 'https://savedlens.vercel.app/dashboard/settings/sync', active: true })
+      return null
+    }
+    return token
+  }
+
   // ── 3. Action: Save Active Tab via /api/ingest ────────────────
   btnSaveTab.addEventListener('click', async () => {
     if (!activeTab || !activeTab.url || isSystemPage) {
@@ -160,7 +175,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
-    const token = tokenInput.value.trim() || DEFAULT_TOKEN
+    const token = validateToken()
+    if (!token) return
 
     btnSaveTab.disabled = true
     log(`Sayfa taranıyor: ${activeTab.title || activeTab.url.slice(0, 40)}...`)
@@ -225,7 +241,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 4. Action: Sync Instagram Saved Posts from DOM ────────────
   btnSyncInstagram.addEventListener('click', async () => {
     const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
-    const token = tokenInput.value.trim() || DEFAULT_TOKEN
+    const token = validateToken()
+    if (!token) return
 
     if (!activeTab || !activeTab.url || !activeTab.url.includes('instagram.com')) {
       log('⚠️ Instagram sekmesi bulunamadı. instagram.com/saved sayfası açılıyor...')
