@@ -20,7 +20,8 @@ export async function GET() {
     }
 
     const admin = createAdminClient()
-    const { data: collections, error } = await admin
+    const db = supabase || admin
+    const { data: collections, error } = await db
       .from('collections')
       .select('*, bookmark_collections(count)')
       .eq('user_id', user.id)
@@ -63,7 +64,8 @@ export async function POST(request: Request) {
     }
 
     const admin = createAdminClient()
-    const { data: collection, error } = await admin
+    const db = supabase || admin
+    const { data: collection, error } = await db
       .from('collections')
       .insert({
         user_id: user.id,

@@ -49,19 +49,19 @@ export async function PATCH(
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    const admin = createAdminClient()
+    const db = supabase || createAdminClient()
 
     // 1. Handle Collection assignment / removal
     if ('collection_id' in body) {
       // Remove previous collection assignment
-      await admin
+      await db
         .from('bookmark_collections')
         .delete()
         .eq('bookmark_id', id)
 
       // If a valid collection_id is provided, link it
       if (body.collection_id) {
-        await admin
+        await db
           .from('bookmark_collections')
           .insert({
             bookmark_id: id,
@@ -84,7 +84,7 @@ export async function PATCH(
       updates.ai_summary = body.summary
     }
 
-    const { error: updateError } = await admin
+    const { error: updateError } = await db
       .from('bookmarks')
       .update(updates)
       .eq('id', id)
@@ -96,7 +96,7 @@ export async function PATCH(
     }
 
     // 3. Return bookmark with joined collection info
-    const { data: updatedItem } = await admin
+    const { data: updatedItem } = await db
       .from('bookmarks')
       .select('*, bookmark_collections(collection_id, collections(id, name, color))')
       .eq('id', id)
