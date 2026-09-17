@@ -176,11 +176,19 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; letter-spacing: -0.02em; }
 /* Stagger children */
 .stagger > * { animation: fadeUp 0.4s var(--ease-out) both; }
 .stagger > *:nth-child(1)  { animation-delay: 0ms; }
-.stagger > *:nth-child(2)  { animation-delay: 50ms; }
-.stagger > *:nth-child(3)  { animation-delay: 100ms; }
-.stagger > *:nth-child(4)  { animation-delay: 150ms; }
-.stagger > *:nth-child(5)  { animation-delay: 200ms; }
-.stagger > *:nth-child(6)  { animation-delay: 250ms; }
+.stagger > *:nth-child(2)  { animation-delay: 40ms; }
+.stagger > *:nth-child(3)  { animation-delay: 80ms; }
+.stagger > *:nth-child(4)  { animation-delay: 120ms; }
+.stagger > *:nth-child(5)  { animation-delay: 160ms; }
+.stagger > *:nth-child(6)  { animation-delay: 200ms; }
+.stagger > *:nth-child(7)  { animation-delay: 240ms; }
+.stagger > *:nth-child(8)  { animation-delay: 280ms; }
+.stagger > *:nth-child(9)  { animation-delay: 320ms; }
+.stagger > *:nth-child(10) { animation-delay: 360ms; }
+.stagger > *:nth-child(11) { animation-delay: 400ms; }
+.stagger > *:nth-child(12) { animation-delay: 430ms; }
+/* Items beyond 12 appear instantly to avoid long waits */
+.stagger > *:nth-child(n+13) { animation-delay: 450ms; }
 
 /* Input style */
 .input-base {
@@ -279,6 +287,44 @@ h1, h2, h3, h4, h5, h6 { line-height: 1.25; letter-spacing: -0.02em; }
   height: 1px;
   background: var(--border);
   margin: 1.5rem 0;
+}
+
+/* ── Missing animation classes ──────────────────────────────── */
+
+/* Fade-in (opacity only, no translate) */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.25s var(--ease-out) both;
+}
+
+/* Scale-in (used by modals) */
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-scale-in {
+  animation: scaleIn 0.28s var(--ease-out) both;
+}
+
+/* Slide up (used by toasts and panels) */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slideUp 0.3s var(--ease-out) both;
+}
+
+/* Hide scrollbar while keeping scroll functional */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* Tooltip */

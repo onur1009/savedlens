@@ -8,7 +8,12 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.tiktokcdn.com' },
       { protocol: 'https', hostname: 'i.ytimg.com' },
       { protocol: 'https', hostname: '**.twimg.com' },
-      { protocol: 'https', hostname: '**' }, // fallback for web thumbnails
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      // Storage buckets
+      { protocol: 'https', hostname: '**.supabase.co' },
+      { protocol: 'https', hostname: '**.supabase.in' },
+      // General web thumbnails (og:image from arbitrary sites)
+      { protocol: 'https', hostname: '**' },
     ],
   },
   experimental: {

@@ -228,8 +228,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const token = tokenInput.value.trim() || DEFAULT_TOKEN
 
     if (!activeTab || !activeTab.url || !activeTab.url.includes('instagram.com')) {
-      log('⚠️ Bu işlem için lütfen önce Instagram sekmesine (örn: instagram.com/saved) geçin.')
+      log('⚠️ Instagram sekmesi bulunamadı. instagram.com/saved sayfası açılıyor...')
+      // Open Instagram saved page in new tab
+      chrome.tabs.create({ url: 'https://www.instagram.com/saved/', active: true }, () => {
+        log('Instagram Kaydedilenler sayfası açıldı. Sayfa yüklendikten sonra tekrar tıklayın.')
+      })
       return
+    }
+
+    if (!activeTab.url.includes('/saved') && !activeTab.url.includes('/p/') && !activeTab.url.includes('/reel/')) {
+      log('💡 İpucu: instagram.com/saved adresine gidin ve oradan tekrar eşitleyin.')
     }
 
     btnSyncInstagram.disabled = true
@@ -250,7 +258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           const items = response.items || []
           if (items.length === 0) {
-            log('Sayfada kaydedilen gönderi bulunamadı. Lütfen instagram.com/saved sayfasına kaydırın veya bir gönderi açın.')
+            log('Sayfada kaydedilen gönderi bulunamadı. Lütfen instagram.com/saved sayfasına gidin ve aşağı kaydırın.')
             btnSyncInstagram.disabled = false
             return
           }
@@ -265,6 +273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnSyncInstagram.disabled = false
     }
   })
+
 
   // ── 5. Action: Test Sync (Verifies End-to-End API Connection) ─
   btnTestSync.addEventListener('click', async () => {

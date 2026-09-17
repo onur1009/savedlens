@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SavedLens — Akıllı İçerik & Sosyal Medya Senkronizasyonu",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Instagram, Twitter, TikTok, YouTube ve web içeriklerinizi tek tıkla SavedLens kütüphanenize aktarın, yedekleyin ve AI ile etiketleyin.",
   "icons": {
     "16": "icon16.png",
@@ -11,7 +11,8 @@
   "permissions": [
     "storage",
     "activeTab",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -236,7 +236,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
           author_username: first.author.username,
           author_name: first.author.full_name,
           media_type: first.content.media_type,
-          url: first.permalink || window.location.href,
+          // NOTE: do NOT include `url` here — popup always uses activeTab.url as source of truth
         }
       }
     }

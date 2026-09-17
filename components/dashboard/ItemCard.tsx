@@ -77,6 +77,15 @@ export default function ItemCard({
     (platform === 'instagram' && item.media_type === 'video') ||
     platform === 'tiktok'
 
+  // Boilerplate fallback usernames that should not be shown
+  const BOILERPLATE_USERNAMES = ['instagram_creator', 'instagram_user', 'user', 'kullanici']
+  const displayAuthor = item.author_username && !BOILERPLATE_USERNAMES.includes(item.author_username.toLowerCase())
+    ? item.author_username
+    : null
+
+  // Use portrait ratio for reels/tiktok vertical content, landscape for others
+  const aspectClass = isReel ? 'aspect-[9/13]' : 'aspect-[16/10]'
+
   const formattedDate = new Intl.DateTimeFormat('tr-TR', {
     day: 'numeric',
     month: 'short',
@@ -105,7 +114,7 @@ export default function ItemCard({
       <div>
         {/* Media preview */}
         {item.thumbnail_url && !imgError ? (
-          <div className="relative w-full aspect-[16/10] overflow-hidden bg-black/50">
+          <div className={`relative w-full ${aspectClass} overflow-hidden bg-black/50`}>
             <Image
               src={item.thumbnail_url}
               alt={item.title ?? 'İçerik görseli'}
@@ -167,7 +176,7 @@ export default function ItemCard({
             )}
           </div>
         ) : (
-          <div className="relative w-full aspect-[16/10] overflow-hidden bg-gradient-to-br from-indigo-950/40 via-purple-950/20 to-black/60 p-4 flex flex-col justify-between">
+          <div className={`relative w-full ${aspectClass} overflow-hidden bg-gradient-to-br from-indigo-950/40 via-purple-950/20 to-black/60 p-4 flex flex-col justify-between`}>
             <div className="flex items-center justify-between">
               <span
                 className="px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold tracking-wide uppercase shadow-md"
@@ -196,20 +205,26 @@ export default function ItemCard({
           {/* Author info & Assigned Collection badge */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
-              {item.author_avatar ? (
-                <img
-                  src={item.author_avatar}
-                  alt={item.author_username || 'Yazar'}
-                  className="w-4 h-4 rounded-full object-cover border border-white/10 shrink-0"
-                />
+              {displayAuthor ? (
+                <>
+                  {item.author_avatar ? (
+                    <img
+                      src={item.author_avatar}
+                      alt={displayAuthor}
+                      className="w-4 h-4 rounded-full object-cover border border-white/10 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-4 h-4 rounded-full bg-[var(--bg-elevated)] text-[9px] flex items-center justify-center font-bold text-[var(--accent-light)] shrink-0">
+                      @
+                    </div>
+                  )}
+                  <span className="text-[11px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate">
+                    @{displayAuthor}
+                  </span>
+                </>
               ) : (
-                <div className="w-4 h-4 rounded-full bg-[var(--bg-elevated)] text-[9px] flex items-center justify-center font-bold text-[var(--accent-light)] shrink-0">
-                  @
-                </div>
+                <span className="text-[11px] text-[var(--text-muted)] italic truncate">{platform}</span>
               )}
-              <span className="text-[11px] font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors truncate">
-                @{item.author_username || 'kullanıcı'}
-              </span>
             </div>
 
             {/* Collection pill if categorized */}
