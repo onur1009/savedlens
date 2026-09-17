@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/dashboard/Sidebar'
 import MobileNav from '@/components/dashboard/MobileNav'
+import ExtensionSyncBridge from '@/components/dashboard/ExtensionSyncBridge'
 
 export default async function DashboardLayout({
   children,
@@ -25,6 +26,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
+      <ExtensionSyncBridge userId={user.id} />
       <Sidebar user={sidebarUser} />
       <div className="flex-1 flex flex-col overflow-hidden md:ml-64">
         <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6 pb-24 md:pb-6">

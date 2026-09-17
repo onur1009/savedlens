@@ -17,9 +17,25 @@ function isSupabaseConfigured(): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  // ── Handle CORS Preflight for Extension & API ─────────────────
+  if (request.method === 'OPTIONS') {
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-savedlens-token, X-Requested-With',
+      },
+    })
+  }
+
   // ── Skip auth logic if Supabase is not yet configured ──────────
   if (!isSupabaseConfigured()) {
-    return NextResponse.next({ request })
+    const res = NextResponse.next({ request })
+    if (request.nextUrl.pathname.startsWith('/api')) {
+      res.headers.set('Access-Control-Allow-Origin', '*')
+    }
+    return res
   }
 
   let supabaseResponse = NextResponse.next({ request })
@@ -64,6 +80,12 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
+  }
+
+  if (pathname.startsWith('/api')) {
+    supabaseResponse.headers.set('Access-Control-Allow-Origin', '*')
+    supabaseResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+    supabaseResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-savedlens-token')
   }
 
   return supabaseResponse

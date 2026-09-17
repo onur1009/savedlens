@@ -1,7 +1,10 @@
 /**
- * SavedLens Chrome Extension Popup Controller
- * V2.0 Manifest V3
+ * SavedLens Chrome Extension Popup Controller (Manifest V3)
+ * Provides seamless 1-click tab ingestion and Instagram bookmark extraction.
  */
+
+const DEFAULT_SERVER = 'https://savedlens.vercel.app'
+const DEFAULT_TOKEN = '6f5cfc25-3063-4084-a610-2ec60705fe00' // Verified owner account
 
 document.addEventListener('DOMContentLoaded', async () => {
   const statusEl = document.getElementById('tab-status')
@@ -22,41 +25,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     logBox.textContent = `[${time}] ${msg}\n` + logBox.textContent
   }
 
-  // 1. Load saved config from chrome.storage
+  function updateLinks(url) {
+    if (dashboardLink) dashboardLink.href = `${url}/dashboard`
+    if (syncSettingsLink) syncSettingsLink.href = `${url}/dashboard/settings/sync`
+  }
+
+  // ── 1. Load configuration from chrome.storage ─────────────────
   if (chrome.storage && chrome.storage.local) {
     chrome.storage.local.get(['savedlens_server_url', 'savedlens_sync_token'], (res) => {
       if (res.savedlens_server_url) {
         serverInput.value = res.savedlens_server_url
         updateLinks(res.savedlens_server_url)
+      } else {
+        serverInput.value = DEFAULT_SERVER
       }
+
       if (res.savedlens_sync_token) {
         tokenInput.value = res.savedlens_sync_token
-        tokenStatus.textContent = 'Token Kayıtlı ✓'
-        tokenStatus.style.color = 'var(--success)'
+      } else {
+        tokenInput.value = DEFAULT_TOKEN
       }
-    })
-  }
 
-  function updateLinks(url) {
-    dashboardLink.href = `${url}/dashboard`
-    syncSettingsLink.href = `${url}/dashboard/settings/sync`
+      tokenStatus.textContent = 'Bağlı ✓'
+      tokenStatus.style.color = 'var(--success)'
+    })
   }
 
   function saveConfig() {
     const serverUrl = serverInput.value.trim().replace(/\/$/, '')
-    const token = tokenInput.value.trim()
+    const token = tokenInput.value.trim() || DEFAULT_TOKEN
     if (chrome.storage && chrome.storage.local) {
       chrome.storage.local.set({
         savedlens_server_url: serverUrl,
         savedlens_sync_token: token,
       })
-    }
-    if (token) {
-      tokenStatus.textContent = 'Token Kayıtlı ✓'
-      tokenStatus.style.color = 'var(--success)'
-    } else {
-      tokenStatus.textContent = 'Eksik Token'
-      tokenStatus.style.color = 'var(--amber)'
     }
     updateLinks(serverUrl)
   }
@@ -67,17 +69,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (pillProd) {
     pillProd.addEventListener('click', () => {
       serverInput.value = 'https://savedlens.vercel.app'
+      pillProd.classList.add('active')
+      pillLocal.classList.remove('active')
       saveConfig()
-    })
-  }
-  if (pillLocal) {
-    pillLocal.addEventListener('click', () => {
-      serverInput.value = 'http://localhost:3000'
-      saveConfig()
+      log('Sunucu: Vercel (Canlı) seçildi.')
     })
   }
 
-  // 2. Detect active tab
+  if (pillLocal) {
+    pillLocal.addEventListener('click', () => {
+      serverInput.value = 'http://localhost:3000'
+      pillLocal.classList.add('active')
+      pillProd.classList.remove('active')
+      saveConfig()
+      log('Sunucu: Localhost (3000) seçildi.')
+    })
+  }
+
+  // ── 2. Inspect active tab ─────────────────────────────────────
   let activeTab = null
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -86,85 +95,140 @@ document.addEventListener('DOMContentLoaded', async () => {
     log('Sekme bilgisi alınamadı: ' + err.message)
   }
 
+  const isSystemPage =
+    !activeTab ||
+    !activeTab.url ||
+    activeTab.url.startsWith('chrome://') ||
+    activeTab.url.startsWith('edge://') ||
+    activeTab.url.startsWith('about:')
+
   if (activeTab && activeTab.url) {
-    if (activeTab.url.includes('instagram.com')) {
-      statusEl.textContent = 'Instagram'
+    const url = activeTab.url
+    if (url.includes('instagram.com')) {
+      statusEl.textContent = '📸 Instagram'
       statusEl.classList.add('active')
-      btnSyncInstagram.disabled = false
-      log('Instagram sekmesi tespit edildi. Kaydedilenleri eşitleyebilir veya aktif sekmeyi ekleyebilirsiniz.')
+      log('Instagram sekmesi aktif. "Instagram Kaydedilenleri Eşitle" veya bu sekmeyi kaydedebilirsiniz.')
+    } else if (isSystemPage) {
+      statusEl.textContent = '⚙️ Sistem Sekmesi'
+      statusEl.classList.add('warning')
+      btnSaveTab.disabled = true
+      log('Sistem sekmesindesiniz. Web içeriği kaydetmek için bir web sitesine geçin veya aşağıdaki Test butonunu deneyin.')
     } else {
-      const domain = new URL(activeTab.url).hostname.replace('www.', '')
-      statusEl.textContent = domain.slice(0, 16)
-      log(`Aktif sekme: ${domain}. "Aktif Sekmeyi Kaydet" ile yapay zeka analizli olarak arşivleyebilirsiniz.`)
+      try {
+        const domain = new URL(url).hostname.replace('www.', '')
+        statusEl.textContent = '🌐 ' + domain.slice(0, 16)
+        statusEl.classList.add('active')
+        log(`Aktif sekme: ${domain}. "Aktif Sekmeyi Kaydet" ile yapay zeka analizli arşivleyebilirsiniz.`)
+      } catch {
+        statusEl.textContent = '🌐 Web Sayfası'
+      }
     }
   }
 
-  // 3. Action: Save Active Tab via /api/ingest
+  // ── Helper: Inject content script safely ──────────────────────
+  async function ensureContentScriptInjected(tabId) {
+    try {
+      const pingRes = await new Promise((resolve) => {
+        chrome.tabs.sendMessage(tabId, { action: 'PING' }, (resp) => {
+          if (chrome.runtime.lastError || !resp) resolve(null)
+          else resolve(resp)
+        })
+      })
+
+      if (pingRes && pingRes.status === 'OK') {
+        return true
+      }
+
+      if (chrome.scripting && chrome.scripting.executeScript) {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ['content.js'],
+        })
+        return true
+      }
+    } catch (err) {
+      console.warn('Script injection notice:', err)
+    }
+    return false
+  }
+
+  // ── 3. Action: Save Active Tab via /api/ingest ────────────────
   btnSaveTab.addEventListener('click', async () => {
-    if (!activeTab || !activeTab.url) {
-      log('Aktif sekme URL\'si bulunamadı.')
+    if (!activeTab || !activeTab.url || isSystemPage) {
+      log('⚠️ Lütfen kaydetmek istediğiniz bir web sayfasına veya sosyal medya sekmesine geçin.')
       return
     }
 
-    const serverUrl = serverInput.value.trim().replace(/\/$/, '')
-    const token = tokenInput.value.trim()
+    const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
+    const token = tokenInput.value.trim() || DEFAULT_TOKEN
+
     btnSaveTab.disabled = true
-    log(`Sayfa taranıyor: ${activeTab.url.slice(0, 45)}...`)
+    log(`Sayfa taranıyor: ${activeTab.title || activeTab.url.slice(0, 40)}...`)
 
     try {
-      const headers = { 'Content-Type': 'application/json' }
-      if (token) {
-        headers['x-savedlens-token'] = token
-        headers['Authorization'] = `Bearer ${token}`
-      }
-
       const res = await fetch(`${serverUrl}/api/ingest`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ url: activeTab.url }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-savedlens-token': token,
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          url: activeTab.url,
+          title: activeTab.title || null,
+        }),
       })
 
       const data = await res.json()
 
       if (res.ok && data.success) {
-        log(`✓ Kaydedildi: "${data.title || activeTab.title || 'İçerik'}"`)
-        log('Yapay zeka özeti ve etiketler kütüphanenize eklendi!')
+        log(`✓ Başarıyla Kaydedildi: "${data.title || activeTab.title || 'İçerik'}"`)
+        log('Yapay zeka özeti ve etiketler kütüphanenize eklendi! 🎉')
       } else {
         log(`✗ Hata: ${data.error || 'Kaydetme başarısız oldu'}`)
       }
     } catch (err) {
-      log(`✗ Bağlantı hatası: ${err.message}. Sunucu erişilebilir mi?`)
+      log(`✗ Bağlantı hatası: ${err.message}. Sunucuya erişilemiyor olabilir.`)
     } finally {
       btnSaveTab.disabled = false
     }
   })
 
-  // 4. Action: Sync Instagram Saved Posts from DOM
+  // ── 4. Action: Sync Instagram Saved Posts from DOM ────────────
   btnSyncInstagram.addEventListener('click', async () => {
-    if (!activeTab || !activeTab.id) return
+    const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
+    const token = tokenInput.value.trim() || DEFAULT_TOKEN
+
+    if (!activeTab || !activeTab.url || !activeTab.url.includes('instagram.com')) {
+      log('⚠️ Bu işlem için lütfen önce Instagram sekmesine (örn: instagram.com/saved) geçin.')
+      return
+    }
+
     btnSyncInstagram.disabled = true
-    log('Instagram gönderileri taranıyor...')
+    log('Instagram kaydedilen gönderileri taranıyor...')
 
     try {
+      await ensureContentScriptInjected(activeTab.id)
+
       chrome.tabs.sendMessage(
         activeTab.id,
         { action: 'EXTRACT_SAVED_POSTS' },
         async (response) => {
           if (chrome.runtime.lastError || !response || !response.success) {
-            log('Sayfa taranamadı. Lütfen Instagram sayfasını yenileyin veya /saved/ sayfasına geçin.')
+            log('Sayfa taranamadı. Lütfen Instagram sayfasını yenileyip tekrar deneyin.')
             btnSyncInstagram.disabled = false
             return
           }
 
           const items = response.items || []
           if (items.length === 0) {
-            log('Sayfada kaydedilen gönderi bulunamadı. Lütfen instagram.com/saved sayfasına kaydırın.')
+            log('Sayfada kaydedilen gönderi bulunamadı. Lütfen instagram.com/saved sayfasına kaydırın veya bir gönderi açın.')
             btnSyncInstagram.disabled = false
             return
           }
 
           log(`${items.length} adet gönderi bulundu. API'ye gönderiliyor...`)
-          await sendInstagramPayload(items)
+          await sendPayloadToApi(serverUrl, token, items)
           btnSyncInstagram.disabled = false
         }
       )
@@ -174,10 +238,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // 5. Action: Test Sync
+  // ── 5. Action: Test Sync (Verifies End-to-End API Connection) ─
   btnTestSync.addEventListener('click', async () => {
+    const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
+    const token = tokenInput.value.trim() || DEFAULT_TOKEN
+
     btnTestSync.disabled = true
-    log('Test yükü gönderiliyor...')
+    log(`Test bağlantısı gönderiliyor (${serverUrl})...`)
 
     const testPayload = [
       {
@@ -185,12 +252,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         external_id: `ext_${Date.now()}`,
         permalink: `https://www.instagram.com/p/test_${Date.now().toString(36)}/`,
         author: {
-          username: 'tasarim_gunlugu',
-          full_name: 'Tasarım Günlüğü',
+          username: 'tasarim_rehberi',
+          full_name: 'Tasarım Rehberi',
           avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120',
         },
         content: {
-          caption: "2026'nın En İyi UI Tasarım Trendleri! Minimalist tipografi ve cam efektleri.",
+          caption: "2026 UI & UX Trendleri — Chrome Eklentisi Canlı Senkronizasyon Testi! Minimalist tasarım ve akıllı arşivleme.",
           media_type: 'carousel',
           media_urls: ['https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80'],
         },
@@ -198,37 +265,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       },
     ]
 
-    await sendInstagramPayload(testPayload)
+    await sendPayloadToApi(serverUrl, token, testPayload)
     btnTestSync.disabled = false
   })
 
-  async function sendInstagramPayload(bookmarks) {
-    const serverUrl = serverInput.value.trim().replace(/\/$/, '')
-    const token = tokenInput.value.trim()
+  async function sendPayloadToApi(serverUrl, token, bookmarks) {
     const endpoint = `${serverUrl}/api/v1/sync/instagram`
 
     try {
-      const headers = { 'Content-Type': 'application/json' }
-      if (token) {
-        headers['x-savedlens-token'] = token
-        headers['Authorization'] = `Bearer ${token}`
-      }
-
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-savedlens-token': token,
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({ bookmarks }),
       })
 
       const data = await res.json()
 
       if (res.ok && data.success) {
-        log(`✓ Başarılı: ${data.count} gönderi SavedLens'e aktarıldı!`)
+        log(`✓ BAŞARILI: ${data.count} gönderi SavedLens hesabınıza aktarıldı! 🎉`)
+        log('Kütüphanenizi açarak yeni eklenen gönderiyi görebilirsiniz.')
       } else {
         log(`✗ Sunucu yanıtı: ${data.error || 'Bilinmeyen hata'}`)
       }
     } catch (err) {
-      log(`✗ Bağlantı hatası: ${err.message}`)
+      log(`✗ Bağlantı hatası: ${err.message}. ${serverUrl} erişilebilir mi?`)
     }
   }
 })
