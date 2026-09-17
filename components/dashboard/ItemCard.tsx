@@ -91,7 +91,7 @@ export default function ItemCard({
   return (
     <article
       onClick={onClick}
-      className="glass card-lift glow-border rounded-2xl overflow-hidden group flex flex-col justify-between cursor-pointer transition-all duration-300 hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_rgba(124,92,252,0.12)]"
+      className="bg-[#16161e] border border-white/10 card-lift rounded-2xl overflow-hidden group flex flex-col justify-between cursor-pointer transition-all duration-300 hover:border-[var(--accent)]/50 hover:shadow-[0_12px_36px_rgba(0,0,0,0.5)]"
     >
       <div>
         {/* Media preview */}

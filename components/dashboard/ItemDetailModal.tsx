@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import {
   X,
   ExternalLink,
@@ -21,6 +22,7 @@ import {
   FileText,
   Calendar,
   ShieldCheck,
+  DownloadCloud,
 } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
 
@@ -83,6 +85,7 @@ function ItemDetailModalContent({
   const platformColor = PLATFORM_COLORS[platform] ?? '#7c5cfc'
   const hasExtractors = item.extractors && Object.keys(item.extractors).length > 0
   const isBackedUp = Boolean(item.stored_media_urls && item.stored_media_urls.length > 0)
+  const isInstagram = platform === 'instagram'
 
   const formattedDate = new Intl.DateTimeFormat('tr-TR', {
     day: 'numeric',
@@ -152,26 +155,17 @@ function ItemDetailModalContent({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="glass relative w-full max-w-4xl max-h-[90vh] rounded-3xl border border-[var(--border)] overflow-hidden shadow-2xl flex flex-col md:flex-row animate-scale-in"
+        className="relative w-full max-w-4xl max-h-[92vh] rounded-3xl bg-[#121218] border border-white/10 shadow-[0_30px_100px_rgba(0,0,0,0.95)] overflow-hidden flex flex-col md:flex-row animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button Top Right */}
-        <button
-          onClick={onClose}
-          aria-label="Kapat"
-          className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-black/60 hover:bg-black/90 text-zinc-300 hover:text-white flex items-center justify-center border border-white/10 transition-colors backdrop-blur-md"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
         {/* ── Left Column: Media & Platforms ────────────────── */}
-        <div className="w-full md:w-5/12 bg-black/40 flex flex-col justify-between border-b md:border-b-0 md:border-r border-[var(--border)] relative overflow-hidden">
+        <div className="w-full md:w-5/12 bg-[#0d0d12] flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/10 relative overflow-hidden">
           {item.thumbnail_url && !imageError ? (
-            <div className="relative w-full aspect-[4/3] md:aspect-auto md:h-full min-h-[280px] bg-black/60 overflow-hidden">
+            <div className="relative w-full aspect-[4/3] md:aspect-auto md:h-full min-h-[300px] bg-black/60 overflow-hidden">
               <Image
                 src={item.thumbnail_url}
                 alt={item.title ?? 'İçerik görseli'}
@@ -182,7 +176,7 @@ function ItemDetailModalContent({
               />
 
               {/* Gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#121218] via-transparent to-black/30" />
 
               {/* Platform & Media Type Badges */}
               <div className="absolute top-4 left-4 flex items-center gap-2">
@@ -220,67 +214,86 @@ function ItemDetailModalContent({
               )}
             </div>
           ) : (
-            <div className="w-full h-full min-h-[280px] p-8 flex flex-col items-center justify-center text-center bg-gradient-to-br from-indigo-950/40 via-purple-950/20 to-black">
+            <div className="w-full h-full min-h-[300px] p-8 flex flex-col items-center justify-center text-center bg-gradient-to-br from-zinc-900 via-[#161622] to-black">
               <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center text-white text-2xl font-bold shadow-xl mb-3"
                 style={{ backgroundColor: platformColor }}
               >
                 {platform.slice(0, 2).toUpperCase()}
               </div>
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
+              <span className="text-sm font-bold uppercase tracking-wider text-zinc-200">
                 {item.platform ?? 'Web'} İçeriği
               </span>
-              <span className="text-[11px] text-zinc-500 mt-1 max-w-[200px] truncate">
+              <span className="text-xs text-zinc-400 mt-1 max-w-[220px] truncate font-mono">
                 {item.url}
               </span>
+
+              {isInstagram && (
+                <div className="mt-6 p-3 rounded-xl bg-purple-950/30 border border-purple-800/40 max-w-[240px]">
+                  <p className="text-[11px] text-purple-300 leading-snug">
+                    Tüm fotoğrafları ve videoları eksiksiz çekmek için Chrome eklentisini kullanabilirsiniz.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* ── Right Column: AI Insights & Content ───────────── */}
-        <div className="w-full md:w-7/12 flex flex-col justify-between max-h-[70vh] md:max-h-[85vh] overflow-y-auto p-6 md:p-8 space-y-6">
+        <div className="w-full md:w-7/12 flex flex-col justify-between max-h-[70vh] md:max-h-[90vh] overflow-y-auto p-6 md:p-8 space-y-6 bg-[#121218]">
           <div className="space-y-5">
-            {/* Author info & date */}
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5">
+            {/* Header: Author info on left, Star + Close on right */}
+            <div className="flex items-center justify-between gap-4 pb-3 border-b border-white/10">
+              <div className="flex items-center gap-3">
                 {item.author_avatar ? (
                   <img
                     src={item.author_avatar}
                     alt={item.author_username || 'Yazar'}
-                    className="w-8 h-8 rounded-full object-cover border border-[var(--border)]"
+                    className="w-9 h-9 rounded-full object-cover border border-white/10 shadow-sm"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-[var(--accent-subtle)] text-xs flex items-center justify-center font-bold text-[var(--accent-light)]">
+                  <div className="w-9 h-9 rounded-full bg-[var(--accent-subtle)] text-xs flex items-center justify-center font-bold text-[var(--accent-light)] border border-[var(--accent)]/30">
                     @
                   </div>
                 )}
                 <div>
-                  <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+                  <h4 className="text-sm font-bold text-white leading-tight">
                     {item.author_username ? `@${item.author_username}` : 'Bilinmeyen Yazar'}
                   </h4>
-                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-                    <Calendar className="w-3 h-3" />
+                  <div className="flex items-center gap-1.5 text-xs text-zinc-400 mt-0.5">
+                    <Calendar className="w-3.5 h-3.5" />
                     <span>{formattedDate}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Star toggle */}
-              <button
-                onClick={handleToggleFavorite}
-                className="p-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-zinc-400 hover:text-amber-400 transition-colors"
-                title={isFavorite ? 'Favorilerden Çıkar' : 'Favorilere Ekle'}
-              >
-                <Star
-                  className={`w-4 h-4 ${
-                    isFavorite ? 'fill-amber-400 text-amber-400' : ''
-                  }`}
-                />
-              </button>
+              {/* Action buttons: Star & Close button */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleFavorite}
+                  className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-amber-400 transition-colors border border-white/10"
+                  title={isFavorite ? 'Favorilerden Çıkar' : 'Favorilere Ekle'}
+                >
+                  <Star
+                    className={`w-4 h-4 ${
+                      isFavorite ? 'fill-amber-400 text-amber-400' : ''
+                    }`}
+                  />
+                </button>
+
+                <button
+                  onClick={onClose}
+                  aria-label="Kapat"
+                  className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-white/10"
+                  title="Kapat (ESC)"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Title */}
-            <h2 className="text-lg md:text-xl font-bold text-[var(--text-primary)] leading-snug">
+            <h2 className="text-lg md:text-xl font-bold text-white leading-snug">
               {item.title ?? item.url}
             </h2>
 
@@ -291,16 +304,37 @@ function ItemDetailModalContent({
                   <Sparkles className="w-4 h-4" />
                   <span>Yapay Zeka Özeti</span>
                 </div>
-                <p className="text-xs md:text-sm text-[var(--text-secondary)] leading-relaxed">
+                <p className="text-xs md:text-sm text-zinc-300 leading-relaxed">
                   {item.summary}
                 </p>
+              </div>
+            )}
+
+            {/* Chrome Extension Tip if Instagram fallback */}
+            {isInstagram && (
+              <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-800/40 flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-300">
+                    <DownloadCloud className="w-3.5 h-3.5" />
+                    <span>Instagram Otomatik Senkronizasyon</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-200/80">
+                    Kaydedilen tüm Instagram postlarını tek tıkla doğrudan tarayıcınızdan aktarabilirsiniz.
+                  </p>
+                </div>
+                <Link
+                  href="/dashboard/settings/sync"
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shrink-0 transition-colors"
+                >
+                  Eklentiyi Kur
+                </Link>
               </div>
             )}
 
             {/* Structured Extractors */}
             {hasExtractors && (
               <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
                   Akıllı İçerik Çıkarımları
                 </h4>
 
@@ -394,10 +428,10 @@ function ItemDetailModalContent({
             {/* Original Caption / Full Text */}
             {item.description && (
               <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
                   Orijinal Açıklama
                 </h4>
-                <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text-secondary)] leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                <div className="p-3.5 rounded-xl bg-zinc-900/60 border border-white/10 text-xs text-zinc-300 leading-relaxed max-h-44 overflow-y-auto whitespace-pre-wrap">
                   {item.description}
                 </div>
               </div>
@@ -406,14 +440,14 @@ function ItemDetailModalContent({
             {/* Tags */}
             {item.tags && item.tags.length > 0 && (
               <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
                   Etiketler
                 </h4>
                 <div className="flex flex-wrap gap-1.5">
                   {item.tags.map((tag) => (
                     <span
                       key={tag}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)] flex items-center gap-1 transition-colors"
+                      className="text-xs px-2.5 py-1 rounded-lg bg-zinc-900 border border-white/10 text-zinc-300 flex items-center gap-1"
                     >
                       <Tag className="w-3 h-3 text-[var(--accent-light)]" />
                       <span>#{tag}</span>
@@ -425,11 +459,11 @@ function ItemDetailModalContent({
           </div>
 
           {/* ── Bottom Action Toolbar ───────────────────────── */}
-          <div className="pt-4 border-t border-[var(--border)] flex flex-wrap items-center justify-between gap-3">
+          <div className="pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCopyLink}
-                className="px-3 py-2 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 transition-colors"
+                className="px-3 py-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-white/10 text-xs font-medium text-zinc-300 hover:text-white flex items-center gap-1.5 transition-colors"
                 title="Bağlantıyı Kopyala"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
@@ -439,7 +473,7 @@ function ItemDetailModalContent({
               <button
                 onClick={handleDelete}
                 disabled={isDeleting}
-                className="px-3 py-2 rounded-xl bg-rose-950/30 hover:bg-rose-950/60 border border-rose-800/40 text-xs font-medium text-rose-300 hover:text-rose-200 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                className="px-3 py-2 rounded-xl bg-rose-950/40 hover:bg-rose-950/70 border border-rose-800/40 text-xs font-medium text-rose-300 hover:text-rose-200 flex items-center gap-1.5 transition-colors disabled:opacity-50"
                 title="İçeriği Sil"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -451,7 +485,7 @@ function ItemDetailModalContent({
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-primary text-xs font-semibold py-2 px-4 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-indigo-500/20"
+              className="btn-primary text-xs font-semibold py-2.5 px-5 rounded-xl flex items-center gap-2 shadow-lg hover:shadow-indigo-500/20"
             >
               <span>Orijinal Gönderiye Git</span>
               <ExternalLink className="w-3.5 h-3.5" />
