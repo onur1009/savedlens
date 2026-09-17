@@ -71,6 +71,9 @@ export interface SavedItem {
   author_avatar?: string
   media_type?: string
   stored_media_urls?: string[]
+  collection_id?: string | null
+  collection_name?: string | null
+  collection_color?: string | null
 }
 
 export const MOCK_COLLECTIONS: Collection[] = [

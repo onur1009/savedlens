@@ -30,22 +30,42 @@ export default function CollectionsExplorer({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newColName, setNewColName] = useState('')
   const [newColColor, setNewColColor] = useState(PRESET_COLORS[0])
+  const [isCreating, setIsCreating] = useState(false)
 
-  function handleCreateCollection(e: React.FormEvent) {
+  async function handleCreateCollection(e: React.FormEvent) {
     e.preventDefault()
     if (!newColName.trim()) return
 
-    const newCollection: Collection = {
-      id: `c_${Date.now()}`,
-      name: newColName.trim(),
-      color: newColColor,
-      count: 0,
-      created_at: new Date().toISOString(),
+    setIsCreating(true)
+    try {
+      const res = await fetch('/api/v1/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newColName.trim(),
+          color: newColColor,
+          icon: 'folder',
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.collection) {
+        const newCol: Collection = {
+          id: data.collection.id,
+          name: data.collection.name,
+          color: data.collection.color || newColColor,
+          icon: data.collection.icon || 'folder',
+          count: 0,
+          created_at: data.collection.created_at || new Date().toISOString(),
+        }
+        setCollections((prev) => [newCol, ...prev])
+        setNewColName('')
+        setIsModalOpen(false)
+      }
+    } catch (err) {
+      console.error('Failed to create collection:', err)
+    } finally {
+      setIsCreating(false)
     }
-
-    setCollections((prev) => [newCollection, ...prev])
-    setNewColName('')
-    setIsModalOpen(false)
   }
 
   // Filter bookmarks by selected collection

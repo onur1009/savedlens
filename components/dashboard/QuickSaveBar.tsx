@@ -50,33 +50,29 @@ export default function QuickSaveBar({
     })
   }
 
-  function handleInsertExample(exampleUrl: string) {
-    setUrl(exampleUrl)
-  }
-
   return (
-    <div className="flex flex-col gap-2 relative">
+    <div className="flex flex-col gap-1.5 relative">
       <form
         onSubmit={handleSave}
-        className="glass p-1.5 rounded-2xl flex items-center gap-2 glow-border"
+        className="glass p-1 rounded-xl flex items-center gap-2 glow-border"
         aria-label="İçerik kaydet"
       >
-        <div className="flex items-center gap-2.5 flex-1 px-3 py-1.5">
+        <div className="flex items-center gap-2 flex-1 px-2.5 py-1">
           <Link2 className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
           <input
             id="quick-save-input"
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Instagram, TikTok, YouTube veya herhangi bir link yapıştır..."
-            className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
+            placeholder="Instagram Reel, TikTok, YouTube veya herhangi bir web linki yapıştır..."
+            className="flex-1 bg-transparent text-xs sm:text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
             disabled={isPending}
           />
           {url && !isPending && (
             <button
               type="button"
               onClick={() => setUrl('')}
-              className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors p-1"
+              className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors p-0.5"
               aria-label="Temizle"
             >
               <X className="w-3.5 h-3.5" />
@@ -88,7 +84,7 @@ export default function QuickSaveBar({
           id="btn-save-url"
           type="submit"
           disabled={isPending || !url.trim()}
-          className="btn-primary text-xs font-semibold py-2.5 px-4 shrink-0 rounded-xl flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="btn-primary text-xs font-semibold py-1.5 px-3.5 shrink-0 rounded-lg flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
         >
           {isPending ? (
             <>
@@ -97,47 +93,21 @@ export default function QuickSaveBar({
             </>
           ) : (
             <>
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>AI ile Kaydet</span>
             </>
           )}
         </button>
       </form>
 
-      {/* Quick sample link chips */}
-      <div className="flex items-center gap-2 px-1 text-[11px] text-[var(--text-muted)] overflow-x-auto pb-1 scrollbar-hide">
-        <span className="shrink-0">Örnek dene:</span>
-        <button
-          type="button"
-          onClick={() => handleInsertExample('https://www.instagram.com/p/tiramisu-tarifi/')}
-          className="px-2 py-0.5 rounded-md bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)] transition-colors shrink-0"
-        >
-          🍰 Instagram Tarif
-        </button>
-        <button
-          type="button"
-          onClick={() => handleInsertExample('https://www.tiktok.com/@istanbul_kahve/video/1234')}
-          className="px-2 py-0.5 rounded-md bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)] transition-colors shrink-0"
-        >
-          ☕ TikTok Mekan
-        </button>
-        <button
-          type="button"
-          onClick={() => handleInsertExample('https://www.linkedin.com/posts/ai-trendler-2026')}
-          className="px-2 py-0.5 rounded-md bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-secondary)] transition-colors shrink-0"
-        >
-          💼 LinkedIn AI Post
-        </button>
-      </div>
-
       {/* Toast notification */}
       {status !== 'idle' && (
         <div
           role="status"
-          className={`p-3 rounded-xl text-xs font-medium border flex items-center gap-2 animate-fade-up ${
+          className={`p-2.5 rounded-xl text-xs font-medium border flex items-center gap-2 animate-fade-up ${
             status === 'success'
-              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
-              : 'bg-rose-950/60 text-rose-300 border-rose-800/60'
+              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/80'
+              : 'bg-rose-950/80 text-rose-300 border-rose-800/80'
           }`}
         >
           {status === 'success' ? (

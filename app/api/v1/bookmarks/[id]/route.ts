@@ -49,29 +49,63 @@ export async function PATCH(
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    const updates: Record<string, any> = {}
+    const admin = createAdminClient()
+
+    // 1. Handle Collection assignment / removal
+    if ('collection_id' in body) {
+      // Remove previous collection assignment
+      await admin
+        .from('bookmark_collections')
+        .delete()
+        .eq('bookmark_id', id)
+
+      // If a valid collection_id is provided, link it
+      if (body.collection_id) {
+        await admin
+          .from('bookmark_collections')
+          .insert({
+            bookmark_id: id,
+            collection_id: body.collection_id,
+          })
+      }
+    }
+
+    // 2. Handle bookmark fields update (favorite, tags, summary)
+    const updates: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    }
     if (typeof body.is_favorite === 'boolean') {
       updates.is_favorite = body.is_favorite
     }
     if (Array.isArray(body.tags)) {
       updates.ai_tags = body.tags
     }
+    if (typeof body.summary === 'string') {
+      updates.ai_summary = body.summary
+    }
 
-    const admin = createAdminClient()
-    const { data, error } = await admin
+    const { error: updateError } = await admin
       .from('bookmarks')
       .update(updates)
       .eq('id', id)
       .eq('user_id', user.id)
-      .select()
-      .single()
 
-    if (error) {
-      console.error('Bookmark update error:', error)
-      return NextResponse.json({ error: 'Güncellenemedi' }, { status: 500 })
+    if (updateError) {
+      console.error('Bookmark update error:', updateError)
+      return NextResponse.json({ error: 'İçerik güncellenemedi' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, item: data })
+    // 3. Return bookmark with joined collection info
+    const { data: updatedItem } = await admin
+      .from('bookmarks')
+      .select('*, bookmark_collections(collection_id, collections(id, name, color))')
+      .eq('id', id)
+      .single()
+
+    return NextResponse.json({
+      success: true,
+      item: updatedItem,
+    })
   } catch (err) {
     console.error('Patch handler error:', err)
     return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })
