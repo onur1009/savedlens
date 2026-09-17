@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { SavedItem } from '@/lib/mock-data'
 import DashboardExplorer from '@/components/dashboard/DashboardExplorer'
+import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -46,11 +47,14 @@ export default async function DashboardPage() {
   // Map database rows to SavedItem format including collection info
   const items: SavedItem[] = (bookmarksRes.data || []).map((b: any) => {
     const colObj = b.bookmark_collections?.[0]?.collections
+    const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
+    const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
+
     return {
       id: b.id,
       url: b.permalink,
       platform: b.platform,
-      title: b.author_name ? `${b.author_name} (@${b.author_username})` : b.caption?.slice(0, 60) || 'Kayıtlı İçerik',
+      title: cleanTitle,
       description: b.caption,
       thumbnail_url: (b.stored_media_urls && b.stored_media_urls[0]) || (b.media_urls && b.media_urls[0]) || null,
       summary: b.ai_summary,
@@ -58,7 +62,7 @@ export default async function DashboardPage() {
       extractors: b.extractors ?? null,
       starred: b.is_favorite ?? false,
       created_at: b.created_at,
-      author_username: b.author_username,
+      author_username: realAuthor.username,
       author_avatar: b.author_avatar,
       media_type: b.media_type,
       stored_media_urls: b.stored_media_urls || [],

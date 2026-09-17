@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isSupabaseConfigured } from '@/lib/mock-data'
+import { extractRealAuthor } from '@/lib/bookmark-formatter'
 
 // Payload schema for Instagram sync (Dewey specification)
 const InstagramAuthorSchema = z.object({
@@ -128,15 +129,18 @@ export async function POST(request: Request) {
 
     const insertedRows = []
     for (const item of itemsToProcess) {
+      const captionText = item.content?.caption ?? ''
+      const realAuthor = extractRealAuthor(captionText, item.author?.username)
+
       const row = {
         user_id: userId,
         platform: 'instagram',
         external_id: item.external_id ?? null,
         permalink: item.permalink,
-        author_username: item.author?.username ?? 'instagram_user',
-        author_name: item.author?.full_name ?? null,
+        author_username: realAuthor.username,
+        author_name: item.author?.full_name || realAuthor.name,
         author_avatar: item.author?.avatar_url ?? null,
-        caption: item.content?.caption ?? '',
+        caption: captionText,
         media_type: item.content?.media_type ?? 'image',
         media_urls: item.content?.media_urls ?? [],
         stored_media_urls: item.content?.media_urls ?? [], // initial fallback

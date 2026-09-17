@@ -165,6 +165,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnSaveTab.disabled = true
     log(`Sayfa taranıyor: ${activeTab.title || activeTab.url.slice(0, 40)}...`)
 
+    let richPayload = {
+      url: activeTab.url,
+      title: activeTab.title || null,
+    }
+
+    // Try extracting rich DOM metadata (especially for Instagram posts & reels)
+    try {
+      const injected = await ensureContentScriptInjected(activeTab.id)
+      if (injected) {
+        const metaRes = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(activeTab.id, { action: 'GET_PAGE_METADATA' }, (resp) => {
+            if (chrome.runtime.lastError || !resp || !resp.data) resolve(null)
+            else resolve(resp.data)
+          })
+        })
+
+        if (metaRes) {
+          richPayload = {
+            ...richPayload,
+            ...metaRes,
+            url: activeTab.url, // ensure url is intact
+          }
+          if (metaRes.author_username) {
+            log(`İçerik üreticisi: @${metaRes.author_username} tespit edildi.`)
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Metadata extraction notice:', err)
+    }
+
     try {
       const res = await fetch(`${serverUrl}/api/ingest`, {
         method: 'POST',
@@ -173,17 +204,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           'x-savedlens-token': token,
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          url: activeTab.url,
-          title: activeTab.title || null,
-        }),
+        body: JSON.stringify(richPayload),
       })
 
       const data = await res.json()
 
       if (res.ok && data.success) {
-        log(`✓ Başarıyla Kaydedildi: "${data.title || activeTab.title || 'İçerik'}"`)
-        log('Yapay zeka özeti ve etiketler kütüphanenize eklendi! 🎉')
+        log(`✓ Başarıyla Kaydedildi: "${data.title || richPayload.title || 'İçerik'}"`)
+        log('Yapay zeka özeti, etiketler ve yüksek çözünürlüklü medya kütüphanenize eklendi! 🎉')
       } else {
         log(`✗ Hata: ${data.error || 'Kaydetme başarısız oldu'}`)
       }

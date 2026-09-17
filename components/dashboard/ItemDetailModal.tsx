@@ -25,8 +25,11 @@ import {
   Folder,
   Plus,
   Loader2,
+  Play,
+  Image as ImageIcon,
 } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
+import { formatBookmarkTitle, extractRealAuthor, extractInstagramShortcode } from '@/lib/bookmark-formatter'
 
 interface CollectionOption {
   id: string
@@ -75,13 +78,14 @@ function ItemDetailModalContent({
   const [isFavorite, setIsFavorite] = useState(item.starred ?? false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [imageError, setImageError] = useState(false)
+  const [showPlayer, setShowPlayer] = useState(false)
 
   // Categorization & Tags State
   const [collections, setCollections] = useState<CollectionOption[]>(userCollections)
   const [currentColId, setCurrentColId] = useState<string | null>(item.collection_id || null)
-  const [isColDropdownOpen, setIsColDropdownOpen] = useState(false)
   const [newColName, setNewColName] = useState('')
   const [isCreatingCol, setIsCreatingCol] = useState(false)
+  const [isCreatingColForm, setIsCreatingColForm] = useState(false)
   const [isSavingCol, setIsSavingCol] = useState(false)
 
   const [tags, setTags] = useState<string[]>(item.tags || [])
@@ -93,6 +97,7 @@ function ItemDetailModalContent({
   useEffect(() => {
     setIsFavorite(item.starred ?? false)
     setImageError(false)
+    setShowPlayer(false)
     setCurrentColId(item.collection_id || null)
     setTags(item.tags || [])
   }, [item])
@@ -132,6 +137,10 @@ function ItemDetailModalContent({
     (isInstagram && item.media_type === 'video') ||
     platform === 'tiktok'
 
+  const realAuthor = extractRealAuthor(item.description, item.author_username)
+  const cleanTitle = formatBookmarkTitle(item.description, item.url, realAuthor.name)
+  const shortcode = extractInstagramShortcode(item.url)
+
   const formattedDate = new Intl.DateTimeFormat('tr-TR', {
     day: 'numeric',
     month: 'long',
@@ -144,7 +153,6 @@ function ItemDetailModalContent({
   // 1. Assign collection
   async function handleAssignCollection(collectionId: string | null) {
     setIsSavingCol(true)
-    setIsColDropdownOpen(false)
     setCurrentColId(collectionId)
 
     const selectedCol = collections.find((c) => c.id === collectionId)
@@ -178,13 +186,16 @@ function ItemDetailModalContent({
     if (!newColName.trim()) return
 
     setIsCreatingCol(true)
+    const colors = ['#e1306c', '#6366f1', '#10b981', '#f59e0b', '#06b6d4', '#ec4899', '#8b5cf6']
+    const randomColor = colors[Math.floor(Math.random() * colors.length)]
+
     try {
       const res = await fetch('/api/v1/collections', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: newColName.trim(),
-          color: '#6366f1',
+          color: randomColor,
         }),
       })
       const data = await res.json()
@@ -193,10 +204,11 @@ function ItemDetailModalContent({
         const created = {
           id: data.collection.id,
           name: data.collection.name,
-          color: data.collection.color || '#6366f1',
+          color: data.collection.color || randomColor,
         }
         setCollections((prev) => [created, ...prev])
         setNewColName('')
+        setIsCreatingColForm(false)
         await handleAssignCollection(created.id)
       }
     } catch (err) {
@@ -375,11 +387,29 @@ function ItemDetailModalContent({
       >
         {/* ── Left Column: Media & Platform Showcase ─────────── */}
         <div className="w-full md:w-5/12 bg-[#0d0d12] flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/10 relative overflow-hidden shrink-0">
-          {item.thumbnail_url && !imageError ? (
-            <div className="relative w-full aspect-[16/10] md:aspect-auto md:h-full min-h-[240px] md:min-h-[380px] bg-black/60 overflow-hidden">
+          {showPlayer && shortcode ? (
+            <div className="relative w-full h-[360px] md:h-full min-h-[360px] md:min-h-[480px] bg-black flex flex-col items-center justify-center">
+              <iframe
+                src={`https://www.instagram.com/reel/${shortcode}/embed/`}
+                className="w-full h-full min-h-[360px] md:min-h-[480px] border-0"
+                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                allowFullScreen
+                title="Instagram Reel"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPlayer(false)}
+                className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[11px] font-semibold border border-white/20 backdrop-blur-md flex items-center gap-1 z-20 shadow-lg"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+                <span>Görsele Dön</span>
+              </button>
+            </div>
+          ) : item.thumbnail_url && !imageError ? (
+            <div className="relative w-full aspect-[16/10] md:aspect-auto md:h-full min-h-[240px] md:min-h-[380px] bg-black/60 overflow-hidden group">
               <Image
                 src={item.thumbnail_url}
-                alt={item.title ?? 'İçerik görseli'}
+                alt={cleanTitle}
                 fill
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 40vw"
@@ -390,7 +420,7 @@ function ItemDetailModalContent({
               <div className="absolute inset-0 bg-gradient-to-t from-[#121218] via-transparent to-black/30" />
 
               {/* Platform & Reel Badges */}
-              <div className="absolute top-4 left-4 flex items-center gap-2 flex-wrap">
+              <div className="absolute top-4 left-4 flex items-center gap-2 flex-wrap z-10">
                 <span
                   className="px-3 py-1 rounded-full text-white text-xs font-bold uppercase shadow-lg tracking-wider"
                   style={{ backgroundColor: platformColor }}
@@ -406,12 +436,36 @@ function ItemDetailModalContent({
                 )}
               </div>
 
+              {/* Central Play Button for Reels */}
+              {isReel && shortcode && (
+                <button
+                  type="button"
+                  onClick={() => setShowPlayer(true)}
+                  className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/70 hover:bg-pink-600/90 backdrop-blur-md border border-white/30 text-white flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-[0_0_30px_rgba(225,48,108,0.5)] z-20 group"
+                  title="Reels Oynat"
+                >
+                  <Play className="w-7 h-7 fill-white text-white ml-1 transition-transform group-hover:scale-110" />
+                </button>
+              )}
+
               {/* Backup status pill */}
               {isBackedUp && (
-                <div className="absolute bottom-4 left-4 px-3 py-1 rounded-lg bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 shadow-lg">
+                <div className="absolute bottom-4 left-4 px-3 py-1 rounded-lg bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 shadow-lg z-10">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   <span>Kalıcı Arşivde Yedekli</span>
                 </div>
+              )}
+
+              {/* Bottom Right Reels Oynat toggle button */}
+              {shortcode && (
+                <button
+                  type="button"
+                  onClick={() => setShowPlayer(true)}
+                  className="absolute bottom-4 right-4 px-3 py-1.5 rounded-xl bg-pink-600/90 hover:bg-pink-600 text-white text-xs font-semibold backdrop-blur-md border border-white/20 flex items-center gap-1.5 transition-all shadow-lg z-10 hover:shadow-pink-500/30"
+                >
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>Reels İzle</span>
+                </button>
               )}
             </div>
           ) : (
@@ -428,6 +482,17 @@ function ItemDetailModalContent({
               <span className="text-xs text-zinc-400 mt-1 max-w-[220px] truncate font-mono">
                 {item.url}
               </span>
+
+              {shortcode && (
+                <button
+                  type="button"
+                  onClick={() => setShowPlayer(true)}
+                  className="mt-4 px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg transition-all"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>Reels Oynat</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -441,21 +506,26 @@ function ItemDetailModalContent({
                 {item.author_avatar ? (
                   <img
                     src={item.author_avatar}
-                    alt={item.author_username || 'Yazar'}
+                    alt={realAuthor.username}
                     className="w-8 h-8 rounded-full object-cover border border-white/10 shadow-sm shrink-0"
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-[var(--accent-subtle)] text-xs flex items-center justify-center font-bold text-[var(--accent-light)] border border-[var(--accent)]/30 shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500/20 to-purple-500/20 text-xs flex items-center justify-center font-bold text-pink-400 border border-pink-500/30 shrink-0">
                     @
                   </div>
                 )}
                 <div className="min-w-0">
                   <h4 className="text-xs sm:text-sm font-bold text-white leading-tight truncate">
-                    {item.author_username ? `@${item.author_username}` : 'Bilinmeyen Yazar'}
+                    @{realAuthor.username}
                   </h4>
-                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mt-0.5">
-                    <Calendar className="w-3 h-3" />
-                    <span>{formattedDate}</span>
+                  <div className="flex items-center gap-2 text-[11px] text-zinc-400 mt-0.5">
+                    {realAuthor.name && realAuthor.name !== realAuthor.username && (
+                      <span className="text-zinc-300 font-medium truncate max-w-[140px]">{realAuthor.name} •</span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-zinc-500" />
+                      <span>{formattedDate}</span>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -486,109 +556,108 @@ function ItemDetailModalContent({
             </div>
 
             {/* 2. Interactive Koleksiyon / Kategori Seçici Bar */}
-            <div className="p-3 rounded-2xl bg-zinc-900/80 border border-white/10 flex flex-col gap-2 relative">
+            <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-white/10 space-y-2.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-200">
                   <Folder className="w-4 h-4 text-amber-400" />
-                  <span>Koleksiyon / Klasör:</span>
+                  <span>Koleksiyon / Kategori:</span>
                 </div>
-
-                {/* Dropdown Toggle Button */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsColDropdownOpen((prev) => !prev)}
-                    className="px-3 py-1 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border border-white/15"
-                    style={{
-                      backgroundColor: activeCollection ? `${activeCollection.color}25` : '#27272a',
-                      color: activeCollection ? activeCollection.color : '#e4e4e7',
-                    }}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: activeCollection?.color || '#71717a' }}
-                    />
-                    <span>{activeCollection ? activeCollection.name : '+ Koleksiyon Ata'}</span>
-                    <span className="text-[10px] opacity-70">▼</span>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {isColDropdownOpen && (
-                    <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl bg-[#181822] border border-white/15 shadow-2xl z-50 p-2 flex flex-col gap-1.5 animate-fade-in">
-                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-2 py-1">
-                        Koleksiyon Seç
-                      </div>
-
-                      {/* Remove from collection option */}
-                      <button
-                        type="button"
-                        onClick={() => handleAssignCollection(null)}
-                        className={`text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between hover:bg-zinc-800 transition-colors ${
-                          !currentColId ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-400'
-                        }`}
-                      >
-                        <span>📂 Klasörsüz (Koleksiyon Yok)</span>
-                        {!currentColId && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                      </button>
-
-                      {/* Collection items */}
-                      <div className="max-h-40 overflow-y-auto flex flex-col gap-1 pr-1">
-                        {collections.map((col) => {
-                          const isCurrent = currentColId === col.id
-                          return (
-                            <button
-                              key={col.id}
-                              type="button"
-                              onClick={() => handleAssignCollection(col.id)}
-                              className={`text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between hover:bg-zinc-800 transition-colors ${
-                                isCurrent ? 'bg-zinc-800 font-semibold' : 'text-zinc-300'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 truncate">
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                                  style={{ backgroundColor: col.color }}
-                                />
-                                <span className="truncate">{col.name}</span>
-                              </div>
-                              {isCurrent && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
-                            </button>
-                          )
-                        })}
-                      </div>
-
-                      {/* Inline New Collection Creator */}
-                      <div className="pt-2 border-t border-white/10 mt-1">
-                        <form onSubmit={handleCreateAndAssignCollection} className="flex gap-1.5">
-                          <input
-                            type="text"
-                            value={newColName}
-                            onChange={(e) => setNewColName(e.target.value)}
-                            placeholder="Yeni klasör adı..."
-                            className="flex-1 bg-black/50 px-2.5 py-1.5 rounded-lg text-xs text-white border border-white/10 outline-none focus:border-indigo-500"
-                          />
-                          <button
-                            type="submit"
-                            disabled={!newColName.trim() || isCreatingCol}
-                            className="btn-primary px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 disabled:opacity-50"
-                          >
-                            {isCreatingCol ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                          </button>
-                        </form>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {isSavingCol && (
+                  <span className="text-[11px] text-indigo-400 flex items-center gap-1 font-medium">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Kaydediliyor...
+                  </span>
+                )}
               </div>
 
-              {isSavingCol && (
-                <span className="text-[10px] text-indigo-400">Koleksiyon kaydediliyor...</span>
-              )}
+              {/* Fast Pills Row */}
+              <div className="flex flex-wrap items-center gap-1.5 max-h-36 overflow-y-auto pr-1">
+                <button
+                  type="button"
+                  onClick={() => handleAssignCollection(null)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border ${
+                    !currentColId
+                      ? 'bg-zinc-700 text-white border-white/40 shadow-sm ring-1 ring-white/20'
+                      : 'bg-zinc-800/60 text-zinc-400 border-white/10 hover:bg-zinc-800 hover:text-zinc-200'
+                  }`}
+                >
+                  <span>📂 Klasörsüz</span>
+                  {!currentColId && <Check className="w-3 h-3 text-emerald-400" />}
+                </button>
+
+                {collections.map((col) => {
+                  const isSelected = currentColId === col.id
+                  return (
+                    <button
+                      key={col.id}
+                      type="button"
+                      onClick={() => handleAssignCollection(col.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border ${
+                        isSelected
+                          ? 'ring-2 ring-white/40 shadow-md font-bold'
+                          : 'border-white/10 hover:border-white/20'
+                      }`}
+                      style={{
+                        backgroundColor: isSelected ? col.color : `${col.color}22`,
+                        color: isSelected ? '#ffffff' : (col.color === '#ffffff' ? '#e4e4e7' : col.color),
+                        borderColor: isSelected ? 'rgba(255,255,255,0.4)' : `${col.color}40`,
+                      }}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: isSelected ? '#ffffff' : col.color }}
+                      />
+                      <span className="truncate max-w-[130px]">{col.name}</span>
+                      {isSelected && <Check className="w-3 h-3 text-white ml-0.5" />}
+                    </button>
+                  )
+                })}
+
+                {/* Inline New Folder Form Toggle */}
+                {!isCreatingColForm ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingColForm(true)}
+                    className="px-2.5 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-dashed border-white/20 text-zinc-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Yeni Klasör</span>
+                  </button>
+                ) : (
+                  <form onSubmit={handleCreateAndAssignCollection} className="flex items-center gap-1.5 w-full sm:w-auto mt-1">
+                    <input
+                      type="text"
+                      value={newColName}
+                      onChange={(e) => setNewColName(e.target.value)}
+                      placeholder="Yeni klasör adı..."
+                      autoFocus
+                      className="bg-black/60 px-3 py-1.5 rounded-xl text-xs text-white border border-indigo-500/50 outline-none w-44"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newColName.trim() || isCreatingCol}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1 shrink-0 disabled:opacity-50"
+                    >
+                      {isCreatingCol ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                      <span>Ekle</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingColForm(false)
+                        setNewColName('')
+                      }}
+                      className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+                )}
+              </div>
             </div>
 
             {/* 3. Title */}
             <h2 className="text-base sm:text-lg md:text-xl font-bold text-white leading-snug">
-              {item.title ?? item.url}
+              {cleanTitle}
             </h2>
 
             {/* 4. AI Summary Card with 1-Click Auto-Categorize Action */}

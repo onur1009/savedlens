@@ -3,9 +3,18 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isSupabaseConfigured } from '@/lib/mock-data'
 
+import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
+
 // ── Schema ──────────────────────────────────────────────────────
 const IngestSchema = z.object({
   url: z.string().url('Geçerli bir URL giriniz'),
+  title: z.string().optional().nullable(),
+  caption: z.string().optional().nullable(),
+  author_username: z.string().optional().nullable(),
+  author_name: z.string().optional().nullable(),
+  author_avatar: z.string().optional().nullable(),
+  thumbnail_url: z.string().optional().nullable(),
+  media_type: z.string().optional().nullable(),
 })
 
 // ── Platform detection ──────────────────────────────────────────
@@ -303,22 +312,37 @@ export async function POST(request: Request) {
       )
     }
 
-    const { url } = parsed.data
+    const incoming = parsed.data
+    const { url } = incoming
     const platform = detectPlatform(url)
 
     // Parallel: scrape + AI
-    const meta = await scrapeMetadata(url, platform)
+    const scrapedMeta = await scrapeMetadata(url, platform)
+
+    // Extract real author from caption / username if available
+    const candidateCaption = incoming.caption || scrapedMeta.description || scrapedMeta.title
+    const candidateAuthor = incoming.author_username || incoming.author_name || scrapedMeta.author_username
+    const realAuthor = extractRealAuthor(candidateCaption, candidateAuthor)
+
+    const finalTitle = incoming.title && !incoming.title.includes('@instagram_user') && incoming.title !== 'Instagram'
+      ? incoming.title
+      : formatBookmarkTitle(candidateCaption, url, realAuthor.name)
+
+    const finalThumb = incoming.thumbnail_url || scrapedMeta.thumbnail_url || null
+    const finalMediaType = incoming.media_type || scrapedMeta.media_type || (url.includes('/reel/') ? 'video' : 'image')
+    const finalDescription = candidateCaption || finalTitle
+
     const ai = await generateSummary(
-      meta.title,
-      meta.description
+      finalTitle,
+      finalDescription
     )
 
-    const finalSummary = (meta as any).forcedSummary || ai.summary
-    const finalTags = (meta as any).forcedTags || ai.tags
-    const finalExtractors = (meta as any).forcedExtractors || ai.extractors
-    const finalAuthorUsername = meta.author_username || (platform === 'instagram' ? 'instagram_user' : 'kullanıcı')
-    const finalAuthorName = meta.author_name || null
-    const finalMediaType = meta.media_type || 'image'
+    const finalSummary = (scrapedMeta as any).forcedSummary || ai.summary
+    const finalTags = (scrapedMeta as any).forcedTags || ai.tags
+    const finalExtractors = (scrapedMeta as any).forcedExtractors || ai.extractors
+    const finalAuthorUsername = realAuthor.username
+    const finalAuthorName = realAuthor.name
+    const finalThumbnailList = finalThumb ? [finalThumb] : []
 
     // Check offline mode
     if (!isSupabaseConfigured()) {
@@ -326,9 +350,9 @@ export async function POST(request: Request) {
         id: `offline-${Date.now()}`,
         url,
         platform,
-        title: meta.title || url,
-        description: meta.description || 'Sosyal medyadan kaydedilen içerik.',
-        thumbnail_url: meta.thumbnail_url || null,
+        title: finalTitle,
+        description: finalDescription,
+        thumbnail_url: finalThumb,
         summary: finalSummary,
         tags: finalTags,
         extractors: finalExtractors,
@@ -337,7 +361,7 @@ export async function POST(request: Request) {
         author_username: finalAuthorUsername,
         author_name: finalAuthorName,
         media_type: finalMediaType,
-        stored_media_urls: meta.thumbnail_url ? [meta.thumbnail_url] : [],
+        stored_media_urls: finalThumbnailList,
       }
 
       return NextResponse.json({
@@ -408,11 +432,11 @@ export async function POST(request: Request) {
       platform,
       permalink: url,
       author_username: finalAuthorUsername,
-      author_name: finalAuthorName || (meta.title ? meta.title.slice(0, 100) : null),
-      caption: meta.description || meta.title || 'Kaydedilen İçerik',
+      author_name: finalAuthorName || finalTitle.slice(0, 100),
+      caption: finalDescription,
       media_type: finalMediaType,
-      media_urls: meta.thumbnail_url ? [meta.thumbnail_url] : [],
-      stored_media_urls: meta.thumbnail_url ? [meta.thumbnail_url] : [],
+      media_urls: finalThumbnailList,
+      stored_media_urls: finalThumbnailList,
       ai_summary: finalSummary,
       ai_tags: finalTags,
       extractors: finalExtractors,
@@ -434,7 +458,7 @@ export async function POST(request: Request) {
       id: dbItem.id,
       url: dbItem.permalink,
       platform: dbItem.platform,
-      title: meta.title || dbItem.author_name || dbItem.permalink,
+      title: finalTitle || dbItem.author_name || dbItem.permalink,
       description: dbItem.caption,
       thumbnail_url: dbItem.media_urls?.[0] || null,
       summary: dbItem.ai_summary,

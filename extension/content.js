@@ -37,6 +37,41 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     return null
   }
 
+  // ── Helper: clean caption boilerplate ─────────────────────────
+  function cleanInstagramCaption(raw) {
+    if (!raw) return ''
+    let text = raw.trim()
+    text = text.replace(/^[A-Za-z0-9_.]+\s+adlı kullanıcının\s+[^:]*tarihli\s*(?:Reel\s+videosu|fotoğrafı|gönderisi|videosu)?[:\s]*/i, '')
+    text = text.replace(/^(?:Photo|Video|Reel)\s+by\s+[A-Za-z0-9_.]+\s+on\s+[^:]*[:\s]*/i, '')
+    text = text.replace(/^May be an image of\s+/i, '')
+    return text.trim()
+  }
+
+  // ── Helper: extract author from alt or caption text ───────────
+  function extractAuthorFromText(altText) {
+    if (!altText) return null
+
+    // 1. Turkish Instagram: "[username] adlı kullanıcının..."
+    const trMatch = altText.match(/^([A-Za-z0-9_.]+)\s+adlı kullanıcının/i)
+    if (trMatch && trMatch[1]) {
+      return trMatch[1].trim()
+    }
+
+    // 2. English Instagram: "Photo by [username] on..."
+    const enMatch = altText.match(/(?:Photo|Video|Reel)\s+by\s+([A-Za-z0-9_.]+)\s+on/i)
+    if (enMatch && enMatch[1]) {
+      return enMatch[1].trim()
+    }
+
+    // 3. Short format: "by @[username]"
+    const byMatch = altText.match(/by\s+@?([A-Za-z0-9_.]+)/i)
+    if (byMatch && byMatch[1]) {
+      return byMatch[1].trim()
+    }
+
+    return null
+  }
+
   // ── Helper: get best image resolution ─────────────────────────
   function getBestImageSrc(element) {
     if (!element) return null
@@ -71,20 +106,34 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     if (singlePost) {
       seenShortcodes.add(singlePost.shortcode)
 
-      // Author
-      let authorName = 'instagram_user'
+      // Author extraction with fallbacks
+      let authorName = 'instagram_creator'
       const authorEl = document.querySelector(
         'header a, article h2 a, [role="main"] header a, a[role="link"][tabindex="0"], a[href^="/"][role="link"]'
       )
       if (authorEl && authorEl.textContent) {
-        authorName = authorEl.textContent.trim().replace(/^@/, '')
+        const text = authorEl.textContent.trim().replace(/^@/, '')
+        if (text && text !== 'Instagram' && !text.includes(' ')) {
+          authorName = text
+        }
+      }
+
+      // Check og:title for creator
+      const ogTitle = document.querySelector('meta[property="og:title"]')?.content
+      if (ogTitle) {
+        const trAuthor = ogTitle.match(/^([^,]+),\s*Instagram'da:/i)
+        const enAuthor = ogTitle.match(/^([^on]+)\s+on\s+Instagram:/i)
+        const match = trAuthor || enAuthor
+        if (match && match[1] && (authorName === 'instagram_creator' || authorName === 'instagram_user')) {
+          authorName = match[1].trim()
+        }
       }
 
       // Media
       const imgEl = document.querySelector(
         'article img[style*="object-fit"], article img, [role="main"] img, [role="presentation"] img'
       )
-      const mediaUrl = getBestImageSrc(imgEl)
+      const mediaUrl = getBestImageSrc(imgEl) || document.querySelector('meta[property="og:image"]')?.content || null
 
       // Caption
       let captionText = ''
@@ -95,6 +144,14 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
         captionText = captionEl.textContent.trim()
       } else if (imgEl && imgEl.alt) {
         captionText = imgEl.alt
+      } else if (document.querySelector('meta[property="og:description"]')?.content) {
+        captionText = document.querySelector('meta[property="og:description"]').content
+      }
+
+      // If author not found yet, check caption text
+      const parsedAuthorFromText = extractAuthorFromText(captionText)
+      if (parsedAuthorFromText) {
+        authorName = parsedAuthorFromText
       }
 
       const isVideo = singlePost.type === 'reel' || Boolean(document.querySelector('article video, [role="main"] video'))
@@ -109,7 +166,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
           avatar_url: '',
         },
         content: {
-          caption: captionText || 'Instagram Gönderisi',
+          caption: cleanInstagramCaption(captionText) || captionText || 'Instagram Gönderisi',
           media_type: isVideo ? 'video' : 'image',
           media_urls: mediaUrl ? [mediaUrl] : [],
         },
@@ -136,14 +193,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
         mediaType = 'carousel'
       }
 
-      let authorUsername = 'instagram_user'
-      const authorMatch =
-        altText.match(/Photo by ([^on]+) on/i) ||
-        altText.match(/Fotoğraf: ([^,]+)/i) ||
-        altText.match(/by ([^,]+)/i)
-      if (authorMatch && authorMatch[1]) {
-        authorUsername = authorMatch[1].trim().replace(/[@\s]/g, '')
-      }
+      let authorUsername = extractAuthorFromText(altText) || 'instagram_creator'
 
       extracted.push({
         platform: 'instagram',
@@ -155,7 +205,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
           avatar_url: '',
         },
         content: {
-          caption: altText || 'Instagram Gönderisi',
+          caption: cleanInstagramCaption(altText) || altText || 'Instagram Gönderisi',
           media_type: mediaType,
           media_urls: mediaUrl ? [mediaUrl] : [],
         },
@@ -168,6 +218,29 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
 
   // ── Extract Generic Page Metadata ─────────────────────────────
   function extractPageMetadata() {
+    const isInstagram = window.location.hostname.includes('instagram.com')
+    if (isInstagram) {
+      const items = extractInstagramFromDOM()
+      if (items && items.length > 0) {
+        const first = items[0]
+        const clean = cleanInstagramCaption(first.content.caption)
+        const firstLine = clean.split('\n')[0] || clean
+        const shortTitle = firstLine.length > 70 ? firstLine.slice(0, 68) + '...' : firstLine
+
+        return {
+          title: shortTitle || `${first.author.username} Paylaşımı`,
+          caption: first.content.caption,
+          description: first.content.caption,
+          thumbnail_url: first.content.media_urls?.[0] || null,
+          image: first.content.media_urls?.[0] || null,
+          author_username: first.author.username,
+          author_name: first.author.full_name,
+          media_type: first.content.media_type,
+          url: first.permalink || window.location.href,
+        }
+      }
+    }
+
     const getMeta = (name) => {
       const el = document.querySelector(`meta[property="${name}"], meta[name="${name}"]`)
       return el ? el.getAttribute('content') : null
@@ -179,8 +252,10 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
 
     return {
       title: title.trim(),
+      caption: description.trim(),
       description: description.trim(),
-      image: image.trim(),
+      thumbnail_url: image.trim() || null,
+      image: image.trim() || null,
       url: window.location.href,
     }
   }
