@@ -10,10 +10,10 @@ import {
   Ticket,
   Mic2,
   Code2,
-  CloudCheck,
   Layers,
   Video,
   FileText,
+  Maximize2,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -26,7 +26,7 @@ interface Extractors {
   [key: string]: boolean | undefined
 }
 
-interface ItemCardData {
+export interface ItemCardData {
   id: string
   url: string
   title: string | null
@@ -41,6 +41,7 @@ interface ItemCardData {
   author_avatar?: string
   media_type?: string
   stored_media_urls?: string[]
+  starred?: boolean
 }
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -53,8 +54,15 @@ const PLATFORM_COLORS: Record<string, string> = {
   web: '#7c5cfc',
 }
 
-export default function ItemCard({ item }: { item: ItemCardData }) {
-  const [starred, setStarred] = useState(false)
+export default function ItemCard({
+  item,
+  onClick,
+}: {
+  item: ItemCardData
+  onClick?: () => void
+}) {
+  const [starred, setStarred] = useState(item.starred ?? false)
+  const [imgError, setImgError] = useState(false)
   const platform = item.platform?.toLowerCase() ?? 'web'
   const platformColor = PLATFORM_COLORS[platform] ?? '#7c5cfc'
   const hasExtractors = item.extractors && Object.keys(item.extractors).length > 0
@@ -65,11 +73,29 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
     month: 'short',
   }).format(new Date(item.created_at))
 
+  async function handleToggleStar(e: React.MouseEvent) {
+    e.stopPropagation()
+    const nextState = !starred
+    setStarred(nextState)
+    try {
+      await fetch(`/api/v1/bookmarks/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_favorite: nextState }),
+      })
+    } catch {
+      // ignore
+    }
+  }
+
   return (
-    <article className="glass card-lift glow-border rounded-2xl overflow-hidden group flex flex-col justify-between">
+    <article
+      onClick={onClick}
+      className="glass card-lift glow-border rounded-2xl overflow-hidden group flex flex-col justify-between cursor-pointer transition-all duration-300 hover:border-[var(--accent)]/50 hover:shadow-[0_8px_30px_rgba(124,92,252,0.12)]"
+    >
       <div>
         {/* Media preview */}
-        {item.thumbnail_url && (
+        {item.thumbnail_url && !imgError ? (
           <div className="relative w-full aspect-[16/10] overflow-hidden bg-black/40">
             <Image
               src={item.thumbnail_url}
@@ -77,6 +103,7 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-500"
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              onError={() => setImgError(true)}
             />
 
             {/* Platform badge */}
@@ -105,6 +132,14 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
               </div>
             )}
 
+            {/* Hover Inspect Icon */}
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <span className="px-3 py-1.5 rounded-xl bg-black/80 backdrop-blur-md text-white text-xs font-medium flex items-center gap-1.5 border border-white/10 shadow-lg">
+                <Maximize2 className="w-3.5 h-3.5 text-[var(--accent-light)]" />
+                <span>İncele & AI Analizi</span>
+              </span>
+            </div>
+
             {/* Cloud Backup Pill */}
             {isBackedUp && (
               <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-emerald-950/80 backdrop-blur-md border border-emerald-500/30 text-emerald-300 text-[9px] font-medium flex items-center gap-1">
@@ -113,10 +148,32 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
               </div>
             )}
           </div>
+        ) : (
+          <div className="relative w-full aspect-[16/10] overflow-hidden bg-gradient-to-br from-indigo-950/40 via-purple-950/20 to-black/60 p-4 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span
+                className="px-2.5 py-0.5 rounded-full text-white text-[10px] font-semibold tracking-wide uppercase shadow-md"
+                style={{ backgroundColor: platformColor }}
+              >
+                {item.platform ?? 'Web'}
+              </span>
+              <span className="text-[10px] text-zinc-400 uppercase tracking-wider font-mono">
+                {item.media_type ?? 'link'}
+              </span>
+            </div>
+            <div className="text-center py-2">
+              <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                Detayları Görüntüle ↗
+              </span>
+            </div>
+            <span className="text-[9px] text-zinc-500 truncate font-mono">
+              {item.url}
+            </span>
+          </div>
         )}
 
         <div className="p-4 flex flex-col gap-3">
-          {/* Author info (Dewey model) */}
+          {/* Author info */}
           {item.author_username && (
             <div className="flex items-center gap-2">
               {item.author_avatar ? (
@@ -130,7 +187,7 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
                   @
                 </div>
               )}
-              <span className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+              <span className="text-xs font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors">
                 @{item.author_username}
               </span>
             </div>
@@ -138,17 +195,17 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
 
           {/* Title & star */}
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-snug line-clamp-2">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] leading-snug line-clamp-2 group-hover:text-[var(--accent-light)] transition-colors">
               {item.title ?? item.url}
             </h3>
             <button
-              onClick={() => setStarred(!starred)}
+              onClick={handleToggleStar}
               aria-label={starred ? 'Favorilerden çıkar' : 'Favorilere ekle'}
-              className="shrink-0 text-[var(--text-muted)] hover:text-[var(--warning)] transition-colors p-1"
+              className="shrink-0 text-[var(--text-muted)] hover:text-amber-400 transition-colors p-1"
             >
               <Star
                 className={`w-4 h-4 ${
-                  starred ? 'fill-[var(--warning)] text-[var(--warning)]' : ''
+                  starred ? 'fill-amber-400 text-amber-400' : ''
                 }`}
               />
             </button>
@@ -221,7 +278,8 @@ export default function ItemCard({ item }: { item: ItemCardData }) {
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--accent-light)] transition-colors"
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--accent-light)] transition-colors p-1"
         >
           <span>Kaynağa Git</span>
           <ExternalLink className="w-3 h-3" />

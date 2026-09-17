@@ -6,6 +6,7 @@ import type { SavedItem } from '@/lib/mock-data'
 import FilterBar from './FilterBar'
 import LibraryGrid from './LibraryGrid'
 import QuickSaveBar from './QuickSaveBar'
+import ItemDetailModal from './ItemDetailModal'
 
 interface DashboardExplorerProps {
   initialItems: SavedItem[]
@@ -20,6 +21,7 @@ export default function DashboardExplorer({
   const router = useRouter()
 
   const [items, setItems] = useState<SavedItem[]>(initialItems)
+  const [selectedItem, setSelectedItem] = useState<SavedItem | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedPlatform, setSelectedPlatform] = useState('Hepsi')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -122,6 +124,16 @@ export default function DashboardExplorer({
     setItems((prev) => [newItem, ...prev])
   }
 
+  function handleItemUpdated(updatedItem: SavedItem) {
+    setItems((prev) => prev.map((it) => (it.id === updatedItem.id ? updatedItem : it)))
+    setSelectedItem(updatedItem)
+  }
+
+  function handleItemDeleted(deletedId: string) {
+    setItems((prev) => prev.filter((it) => it.id !== deletedId))
+    setSelectedItem(null)
+  }
+
   const hasActiveFilters = Boolean(
     searchQuery ||
     selectedPlatform !== 'Hepsi' ||
@@ -166,7 +178,20 @@ export default function DashboardExplorer({
       )}
 
       {/* 3. Live Library Grid */}
-      <LibraryGrid items={filteredItems} />
+      <LibraryGrid
+        items={filteredItems}
+        onItemClick={(item) => setSelectedItem(item)}
+      />
+
+      {/* 4. Rich Reader & AI Insights Modal */}
+      {selectedItem && (
+        <ItemDetailModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onItemUpdated={handleItemUpdated}
+          onItemDeleted={handleItemDeleted}
+        />
+      )}
     </div>
   )
 }

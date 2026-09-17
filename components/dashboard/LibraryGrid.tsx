@@ -1,79 +1,44 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { BookmarkPlus, Sparkles, Loader2, Database } from 'lucide-react'
+import Link from 'next/link'
+import { BookmarkPlus, Sparkles, DownloadCloud } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
 import ItemCard from './ItemCard'
 
 interface LibraryGridProps {
   items: SavedItem[]
+  onItemClick?: (item: SavedItem) => void
 }
 
-export default function LibraryGrid({ items }: LibraryGridProps) {
-  const router = useRouter()
-  const [seeding, setSeeding] = useState(false)
-  const [seedMessage, setSeedMessage] = useState<string | null>(null)
-
-  async function handleSeedData() {
-    setSeeding(true)
-    setSeedMessage(null)
-    try {
-      const res = await fetch('/api/seed', { method: 'POST' })
-      const data = await res.json()
-      if (res.ok && data.success) {
-        setSeedMessage('✓ Örnek veriler yüklendi! Sayfa yenileniyor...')
-        setTimeout(() => {
-          router.refresh()
-          window.location.reload()
-        }, 1200)
-      } else {
-        setSeedMessage(`✗ Hata: ${data.error || 'Yüklenemedi'}`)
-        setSeeding(false)
-      }
-    } catch {
-      setSeedMessage('✗ Bağlantı hatası oluştu.')
-      setSeeding(false)
-    }
-  }
-
+export default function LibraryGrid({ items, onItemClick }: LibraryGridProps) {
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-4 text-center animate-fade-up glass rounded-3xl p-8 max-w-lg mx-auto">
-        <div className="w-16 h-16 rounded-2xl bg-[var(--accent-subtle)] flex items-center justify-center shadow-[0_0_20px_var(--accent-glow)]">
+      <div className="flex flex-col items-center justify-center py-20 gap-4 text-center animate-fade-up glass rounded-3xl p-8 max-w-lg mx-auto glow-border">
+        <div className="w-16 h-16 rounded-2xl bg-[var(--accent-subtle)] flex items-center justify-center shadow-[0_0_25px_var(--accent-glow)] border border-[var(--accent)]/30">
           <BookmarkPlus className="w-8 h-8 text-[var(--accent-light)]" />
         </div>
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+
+        <div className="space-y-1.5">
+          <h2 className="text-lg font-bold text-[var(--text-primary)]">
             Kütüphaneniz henüz boş
           </h2>
-          <p className="text-sm text-[var(--text-secondary)] mt-1 max-w-xs mx-auto">
-            Yukarıdaki alana bir link yapıştırın veya tek tıkla örnek Dewey içeriklerini veritabanınıza yükleyin.
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-sm mx-auto leading-relaxed">
+            Yukarıdaki kaydetme çubuğuna Instagram, TikTok, YouTube veya dilediğiniz bir web bağlantısını yapıştırarak ilk içeriğinizi yapay zeka ile arşivleyin.
           </p>
         </div>
 
-        <button
-          onClick={handleSeedData}
-          disabled={seeding}
-          className="btn-primary text-xs font-semibold py-2.5 px-5 rounded-xl flex items-center gap-2 mt-2 disabled:opacity-50"
+        {/* Action suggestion to install or open Chrome extension */}
+        <Link
+          href="/dashboard/settings/sync"
+          className="mt-2 px-4 py-2.5 rounded-xl bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-semibold text-[var(--text-primary)] hover:text-[var(--accent-light)] flex items-center gap-2 transition-all shadow-sm group"
         >
-          {seeding ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Database className="w-4 h-4 text-amber-300" />
-          )}
-          <span>Örnek Dewey İçeriklerini Yükle</span>
-        </button>
+          <DownloadCloud className="w-4 h-4 text-[var(--accent-light)] group-hover:scale-110 transition-transform" />
+          <span>Chrome Eklentisini Aç & Eşitle</span>
+        </Link>
 
-        {seedMessage && (
-          <p className="text-xs text-[var(--accent-light)] font-mono animate-fade-up">
-            {seedMessage}
-          </p>
-        )}
-
-        <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] mt-2">
+        <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] mt-3">
           <Sparkles className="w-3.5 h-3.5 text-[var(--accent-light)]" />
-          Instagram • TikTok • LinkedIn • YouTube • Twitter/X
+          <span>Instagram • TikTok • LinkedIn • YouTube • Twitter/X • Web</span>
         </div>
       </div>
     )
@@ -82,7 +47,11 @@ export default function LibraryGrid({ items }: LibraryGridProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger">
       {items.map((item) => (
-        <ItemCard key={item.id} item={item} />
+        <ItemCard
+          key={item.id}
+          item={item}
+          onClick={() => onItemClick?.(item)}
+        />
       ))}
     </div>
   )

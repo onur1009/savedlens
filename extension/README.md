@@ -1,6 +1,6 @@
 # SavedLens — Chrome Extension (Manifest V3)
 
-Instagram ve diğer sosyal platformlardaki kaydedilen gönderileri tek tıkla **SavedLens** kütüphanenize aktarır, kalıcı medya kopyalarını alır ve AI ile etiketler.
+Web sayfalarını, Instagram, TikTok, Twitter/X ve YouTube gönderilerini tek tıkla **SavedLens** kütüphanenize aktarır, kalıcı medya kopyalarını alır ve AI ile özetleyip etiketler.
 
 ---
 
@@ -16,25 +16,28 @@ Instagram ve diğer sosyal platformlardaki kaydedilen gönderileri tek tıkla **
 
 ---
 
-## ⚡ Kullanım
+## ⚡ Kullanım ve Doğrulama
 
-### A. Instagram'dan Gerçek Senkronizasyon:
+### 1. Senkronizasyon Anahtarınızı (Token) Ekleyin:
+1. SavedLens panelinizde **Ayarlar > Chrome Eklentisi** (`/dashboard/settings/sync`) sayfasına gidin.
+2. Kişisel **Eşitleme Anahtarınızı (Sync Token)** kopyalayın.
+3. Chrome araç çubuğundaki **SavedLens** ikonuna tıklayın ve tokeni yapıştırın (otomatik kaydedilir).
+
+### 2. Aktif Sekmeyi Tek Tıkla Kaydetme:
+- Gezindiğiniz herhangi bir web sitesinde, blogda, Twitter tweet'inde veya YouTube videosundayken uzantıya tıklayıp **"✨ Aktif Sekmeyi SavedLens'e Kaydet"** butonuna basın.
+- Sayfa arka planda taranır, yapay zeka özeti çıkarılır ve kütüphanenize anında eklenir!
+
+### 3. Instagram Kaydedilenleri Toplu Eşitleme:
 1. Tarayıcınızda `instagram.com/<kullanıcı_adınız>/saved/` (Kaydedilenler) sayfasına gidin.
 2. Sayfayı biraz aşağı kaydırarak gönderilerin yüklenmesini sağlayın.
-3. Araç çubuğundaki **SavedLens Sync** uzantı ikonuna tıklayın.
-4. **"📥 Instagram Kaydedilenleri Eşitle"** butonuna basın.
-5. Gönderiler taranıp yerel veya bulut SavedLens veritabanınıza aktarılacaktır.
-
-### B. Çevrimdışı / Hızlı Test:
-1. Herhangi bir sayfadayken uzantı ikonuna tıklayın.
-2. **"⚡ Örnek Veri ile Test Eşitlemesi"** butonuna basın.
-3. `http://localhost:3000/api/v1/sync/instagram` endpoint'i test edilecek ve başarılı sonucu ekranda göreceksiniz.
+3. Uzantı ikonuna tıklayın ve **"📥 Instagram Kaydedilenleri Eşitle"** butonuna basın.
+4. Gönderiler topluca taranıp SavedLens veritabanınıza aktarılacaktır.
 
 ---
 
 ## 🛠️ Mimari ve Veri Formatı
 
-Extension, Instagram'ın DOM ve GraphQL isteklerini dinleyerek aşağıdaki standart Dewey payload formatını SavedLens backend'ine iletir:
+Extension, standart SavedLens payload formatını backend'e iletir:
 
 ```json
 {
@@ -53,7 +56,7 @@ Extension, Instagram'ın DOM ve GraphQL isteklerini dinleyerek aşağıdaki stan
         "media_type": "carousel",
         "media_urls": ["https://..."]
       },
-      "saved_at": "2026-09-16T15:00:00Z"
+      "saved_at": "2026-09-17T15:00:00Z"
     }
   ]
 }

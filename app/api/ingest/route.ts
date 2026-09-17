@@ -211,38 +211,93 @@ export async function POST(request: Request) {
 
     // Online mode: verify auth and upsert into Supabase
     const { createClient } = await import('@/lib/supabase/server')
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { createAdminClient } = await import('@/lib/supabase/admin')
 
-    if (!user) {
+    let userId: string | null = null
+    let clientSupabase = await createClient()
+
+    // 1. Check Bearer / Token header (Extension or API calls)
+    const authHeader = request.headers.get('authorization') || request.headers.get('x-savedlens-token')
+    if (authHeader) {
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+      if (token) {
+        // Check if token matches a profile ID or JWT
+        const admin = createAdminClient()
+        const { data: profile } = await admin.from('profiles').select('id').eq('id', token).single()
+        if (profile?.id) {
+          userId = profile.id
+          clientSupabase = admin as any
+        }
+      }
+    }
+
+    // 2. If no token header, check standard session cookies
+    if (!userId) {
+      const { data: { user } } = await clientSupabase.auth.getUser()
+      if (user) {
+        userId = user.id
+      }
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    const { data: item, error: dbError } = await supabase
-      .from('saved_items')
-      .upsert(
-        {
-          user_id: user.id,
-          url,
-          platform,
-          title: meta.title,
-          description: meta.description,
-          thumbnail_url: meta.thumbnail_url,
-          summary,
-          tags,
-          extractors,
-        },
-        { onConflict: 'user_id,url', ignoreDuplicates: false }
-      )
+    // Ensure profile row exists to satisfy foreign key
+    const admin = createAdminClient()
+    await admin.from('profiles').upsert({ id: userId }, { onConflict: 'id' }).select('id')
+
+    // Upsert into real bookmarks table
+    const bookmarkRow = {
+      user_id: userId,
+      platform,
+      permalink: url,
+      author_username: platform === 'instagram' ? 'instagram_user' : 'web_user',
+      author_name: meta.title ? meta.title.slice(0, 100) : null,
+      caption: meta.description || meta.title || 'Kaydedilen İçerik',
+      media_type: 'image',
+      media_urls: meta.thumbnail_url ? [meta.thumbnail_url] : [],
+      stored_media_urls: meta.thumbnail_url ? [meta.thumbnail_url] : [],
+      ai_summary: summary,
+      ai_tags: tags,
+      extractors,
+      is_favorite: false,
+    }
+
+    const { data: dbItem, error: dbError } = await admin
+      .from('bookmarks')
+      .upsert(bookmarkRow, { onConflict: 'user_id,permalink' })
       .select()
       .single()
 
     if (dbError) {
       console.error('[ingest] DB error:', dbError)
-      return NextResponse.json({ error: 'Veritabanı hatası' }, { status: 500 })
+      return NextResponse.json({ error: 'Veritabanı hatası: ' + dbError.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, title: item.title ?? url, item })
+    const formattedItem = {
+      id: dbItem.id,
+      url: dbItem.permalink,
+      platform: dbItem.platform,
+      title: meta.title || dbItem.author_name || dbItem.permalink,
+      description: dbItem.caption,
+      thumbnail_url: dbItem.media_urls?.[0] || null,
+      summary: dbItem.ai_summary,
+      tags: dbItem.ai_tags || [],
+      extractors: dbItem.extractors || null,
+      starred: dbItem.is_favorite ?? false,
+      created_at: dbItem.created_at,
+      author_username: dbItem.author_username,
+      author_avatar: dbItem.author_avatar,
+      media_type: dbItem.media_type,
+      stored_media_urls: dbItem.stored_media_urls || [],
+    }
+
+    return NextResponse.json({
+      success: true,
+      title: formattedItem.title,
+      item: formattedItem,
+    })
   } catch (err) {
     console.error('[ingest] Unexpected error:', err)
     return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })

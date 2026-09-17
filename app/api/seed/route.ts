@@ -52,7 +52,7 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      message: 'Örnek Dewey verileri Supabase veritabanınıza başarıyla yüklendi!',
+      message: 'Örnek veriler Supabase veritabanınıza başarıyla yüklendi!',
       bookmarksCount: MOCK_BOOKMARKS.length,
       collectionsCount: MOCK_COLLECTIONS.length,
     })

@@ -1,20 +1,51 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   RefreshCw,
   CheckCircle2,
   DownloadCloud,
   Terminal,
-  ArrowRight,
   ExternalLink,
   ShieldCheck,
   Zap,
+  KeyRound,
+  Copy,
+  Check,
+  Globe,
+  ArrowRight,
 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 
 export default function SyncSettingsPage() {
+  const [token, setToken] = useState<string>('')
+  const [copied, setCopied] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [testResult, setTestResult] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function loadUserToken() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setToken(user.id)
+        } else {
+          setToken('demo-user-token-offline')
+        }
+      } catch {
+        setToken('demo-user-token-offline')
+      }
+    }
+    loadUserToken()
+  }, [])
+
+  function handleCopyToken() {
+    if (!token) return
+    navigator.clipboard.writeText(token)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   async function handleTestSync() {
     setTestStatus('loading')
@@ -32,7 +63,7 @@ export default function SyncSettingsPage() {
             avatar_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120',
           },
           content: {
-            caption: '2026 UI Tasarım Trendleri — Senkronizasyon Testi!',
+            caption: '2026 UI Tasarım Trendleri — Canlı Senkronizasyon Testi!',
             media_type: 'carousel',
             media_urls: ['https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80'],
           },
@@ -42,16 +73,21 @@ export default function SyncSettingsPage() {
     }
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) {
+        headers['x-savedlens-token'] = token
+      }
+
       const res = await fetch('/api/v1/sync/instagram', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(testPayload),
       })
 
       const data = await res.json()
       if (res.ok && data.success) {
         setTestStatus('success')
-        setTestResult(`✓ Başarılı: ${data.count} kayıt SavedLens API'sine başarıyla aktarıldı. (${data.offline ? 'Çevrimdışı Simülasyon' : 'Supabase'})`)
+        setTestResult(`✓ Başarılı: ${data.count} kayıt SavedLens API'sine başarıyla aktarıldı. (${data.offline ? 'Çevrimdışı Simülasyon' : 'Supabase Canlı'})`)
       } else {
         setTestStatus('error')
         setTestResult(`✗ Hata: ${data.error || 'İşlem başarısız'}`)
@@ -68,79 +104,134 @@ export default function SyncSettingsPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <RefreshCw className="w-6 h-6 text-[var(--accent-light)]" />
+          <Globe className="w-6 h-6 text-[var(--accent-light)]" />
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-            Chrome Extension & Senkronizasyon
+            Chrome Eklentisi & Senkronizasyon
           </h1>
         </div>
         <p className="text-sm text-[var(--text-secondary)] mt-1">
-          Instagram ve sosyal medya kaydedilenlerinizi API kısıtlamalarına takılmadan tarayıcınızdan SavedLens&apos;e aktarın.
+          Instagram, Twitter, TikTok, YouTube ve gezindiğiniz web sayfalarını tek tıkla yapay zeka analizli olarak SavedLens kütüphanenize aktarın.
         </p>
       </div>
 
-      {/* Extension Installation Card */}
-      <div className="glass rounded-2xl p-6 glow-border flex flex-col gap-5">
+      {/* ── 1. Kişisel Eşitleme Anahtarı (Token) ─────────────── */}
+      <div className="glass rounded-2xl p-6 glow-border flex flex-col gap-4">
         <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent-subtle)] border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent-light)]">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-[var(--text-primary)]">
+                Kişisel Eşitleme Anahtarınız (Sync Token)
+              </h3>
+              <p className="text-xs text-[var(--text-muted)]">
+                Chrome eklentisinin tarayıcınızdan SavedLens hesabınıza güvenle bağlanmasını sağlar.
+              </p>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Aktif
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 p-1.5 rounded-xl bg-black/50 border border-[var(--border)]">
+          <input
+            type="text"
+            readOnly
+            value={token || 'Oturum bilgisi yükleniyor...'}
+            className="flex-1 bg-transparent px-3 py-1 text-xs font-mono text-zinc-300 outline-none select-all"
+          />
+          <button
+            onClick={handleCopyToken}
+            className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-light)] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+          >
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copied ? 'Kopyalandı!' : 'Kopyala'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── 2. Kurulum Rehberi (4 Adım) ───────────────────────── */}
+      <div className="glass rounded-2xl p-6 glow-border flex flex-col gap-5">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[var(--accent)] flex items-center justify-center text-white font-bold">
               <DownloadCloud className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                SavedLens Sync Extension (Manifest V3)
+                SavedLens Chrome Eklentisi (Manifest V3)
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                Proje klasörünüzde hazır paketlenmiş: <code className="text-[var(--accent-light)] font-mono">extension/</code>
+                Proje dizininde hazır: <code className="text-[var(--accent-light)] font-mono">savedlens/extension/</code>
               </p>
             </div>
           </div>
-          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            V3 Uyumlu
-          </span>
         </div>
 
-        {/* 3 Step Install Guide */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
-            <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
-              1
+        {/* 4 Step Visual Flow */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between">
+            <div>
+              <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
+                1
+              </div>
+              <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
+                Uzantılar Sayfası
+              </h4>
+              <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                Chrome adres çubuğuna <code className="text-zinc-200 font-mono">chrome://extensions</code> yazıp sağ üstteki <strong>Geliştirici Modu</strong>&apos;nu açın.
+              </p>
             </div>
-            <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
-              Uzantılar Sayfası
-            </h4>
-            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Chrome/Brave adres çubuğuna <code className="text-zinc-300 font-mono">chrome://extensions</code> yazıp Geliştirici Modunu açın.
-            </p>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
-            <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
-              2
+          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between">
+            <div>
+              <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
+                2
+              </div>
+              <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
+                Klasörü Yükle
+              </h4>
+              <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                <strong>Paketlenmemiş Öğe Yükle</strong> butonuna tıklayın ve <code className="text-zinc-200 font-mono">savedlens/extension/</code> klasörünü seçin.
+              </p>
             </div>
-            <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
-              Paketlenmemiş Yükle
-            </h4>
-            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Sol üstteki <strong>Paketlenmemiş Öğe Yükle</strong> butonuna basıp <code className="text-zinc-300 font-mono">savedlens/extension/</code> klasörünü seçin.
-            </p>
           </div>
 
-          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)]">
-            <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
-              3
+          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between">
+            <div>
+              <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
+                3
+              </div>
+              <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
+                Tokeni Yapıştır
+              </h4>
+              <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                Uzantı simgesine tıklayın ve yukarıdaki <strong>Eşitleme Anahtarınızı</strong> açılan alana yapıştırın.
+              </p>
             </div>
-            <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
-              Instagram&apos;da Eşitle
-            </h4>
-            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Instagram kaydedilenler sayfasındayken uzantı ikonuna tıklayın ve <strong>Eşitle</strong> butonuna basın.
-            </p>
+          </div>
+
+          <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col justify-between">
+            <div>
+              <div className="w-6 h-6 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] text-xs font-bold flex items-center justify-center mb-2">
+                4
+              </div>
+              <h4 className="text-xs font-bold text-[var(--text-primary)] mb-1">
+                Tek Tıkla Kaydet
+              </h4>
+              <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+                Herhangi bir sayfada <strong>Aktif Sekmeyi Kaydet</strong>&apos;e basın veya Instagram&apos;da kaydedilenleri toplu eşitleyin!
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Live Test Sync Section */}
+      {/* ── 3. Canlı Test Bölümü ─────────────────────────────── */}
       <div className="glass rounded-2xl p-6 glow-border flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
@@ -149,7 +240,7 @@ export default function SyncSettingsPage() {
               Canlı Senkronizasyon Testi (API Endpoint Doğrulaması)
             </h3>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              <code className="text-[var(--accent-light)] font-mono">POST /api/v1/sync/instagram</code> rotasına örnek Dewey payload gönderir.
+              Tarayıcınızdan doğrudan <code className="text-[var(--accent-light)] font-mono">POST /api/v1/sync/instagram</code> rotasına test yükü gönderir.
             </p>
           </div>
 
@@ -180,14 +271,14 @@ export default function SyncSettingsPage() {
         )}
       </div>
 
-      {/* Technical Architecture Info */}
+      {/* ── 4. Güvenlik Bilgisi ──────────────────────────────── */}
       <div className="p-5 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] flex flex-col gap-3">
         <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
           <ShieldCheck className="w-4 h-4 text-[var(--accent-light)]" />
-          Dewey Data Flow Güvenliği
+          SavedLens Uçtan Uca Veri Güvenliği
         </h4>
         <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-          Uzantı yalnızca yerel tarayıcınızda çalışır, Instagram şifrenizi veya oturum çerezlerinizi asla dışarı aktarmaz. Yalnızca ekranınızda açık olan kaydedilen gönderilerin bağlantılarını ve medya linklerini kendi SavedLens API uç noktanıza iletir.
+          Uzantı yalnızca yerel tarayıcınızda çalışır, sosyal medya şifrelerinizi veya tarayıcı çerezlerinizi asla dışarı aktarmaz. Yalnızca ekranınızda açık olan sayfaların bağlantılarını ve medya linklerini kendi SavedLens API uç noktanıza iletir.
         </p>
       </div>
     </div>

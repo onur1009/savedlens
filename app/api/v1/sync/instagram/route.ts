@@ -70,17 +70,43 @@ export async function POST(request: Request) {
 
     // Online mode: authenticate and persist to Supabase
     const { createClient } = await import('@/lib/supabase/server')
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { createAdminClient } = await import('@/lib/supabase/admin')
 
-    if (!user) {
-      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
+    let userId: string | null = null
+    let admin = createAdminClient()
+
+    // 1. Check Bearer / Token header (Extension or API calls)
+    const authHeader = request.headers.get('authorization') || request.headers.get('x-savedlens-token')
+    if (authHeader) {
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+      if (token) {
+        const { data: profile } = await admin.from('profiles').select('id').eq('id', token).single()
+        if (profile?.id) {
+          userId = profile.id
+        }
+      }
     }
+
+    // 2. If no token header, check standard session cookies
+    if (!userId) {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        userId = user.id
+      }
+    }
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Oturum açmanız veya eklenti tokeni sağlamanız gerekiyor' }, { status: 401 })
+    }
+
+    // Ensure profile row exists to satisfy foreign key
+    await admin.from('profiles').upsert({ id: userId }, { onConflict: 'id' }).select('id')
 
     const insertedRows = []
     for (const item of itemsToProcess) {
       const row = {
-        user_id: user.id,
+        user_id: userId,
         platform: 'instagram',
         external_id: item.external_id ?? null,
         permalink: item.permalink,
@@ -94,7 +120,7 @@ export async function POST(request: Request) {
         saved_at: item.saved_at ? new Date(item.saved_at).toISOString() : new Date().toISOString(),
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await admin
         .from('bookmarks')
         .upsert(row, { onConflict: 'user_id,permalink' })
         .select()

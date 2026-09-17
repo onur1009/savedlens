@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       })
     }
 
-    const prompt = `Sen bir sosyal medya içerik analiz uzmanısın (Dewey PKM / SavedLens tarzı).
+    const prompt = `Sen bir sosyal medya içerik analiz uzmanısın (SavedLens tarzı).
 Aşağıdaki gönderi metnini analiz et:
 "${contentText}"
 
