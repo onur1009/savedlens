@@ -218,36 +218,40 @@ function ItemDetailModalContent({
     }
   }
 
-  // 3. Add custom tag
+  // 3. Add custom tag helper
+  async function commitNewTag(rawText: string) {
+    const cleanTag = rawText.trim().replace(/^#/, '').toLowerCase()
+    if (!cleanTag || tags.includes(cleanTag)) {
+      setNewTagInput('')
+      return
+    }
+
+    const updatedTags = [...tags, cleanTag]
+    setTags(updatedTags)
+    setNewTagInput('')
+
+    if (onItemUpdated) {
+      onItemUpdated({ ...item, tags: updatedTags })
+    }
+
+    setIsSavingTags(true)
+    try {
+      await fetch(`/api/v1/bookmarks/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: updatedTags }),
+      })
+    } catch (err) {
+      console.error('Failed to save tags:', err)
+    } finally {
+      setIsSavingTags(false)
+    }
+  }
+
   async function handleAddTag(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
-      const cleanTag = newTagInput.trim().replace(/^#/, '').toLowerCase()
-      if (!cleanTag || tags.includes(cleanTag)) {
-        setNewTagInput('')
-        return
-      }
-
-      const updatedTags = [...tags, cleanTag]
-      setTags(updatedTags)
-      setNewTagInput('')
-
-      if (onItemUpdated) {
-        onItemUpdated({ ...item, tags: updatedTags })
-      }
-
-      setIsSavingTags(true)
-      try {
-        await fetch(`/api/v1/bookmarks/${item.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tags: updatedTags }),
-        })
-      } catch (err) {
-        console.error('Failed to save tags:', err)
-      } finally {
-        setIsSavingTags(false)
-      }
+      await commitNewTag(newTagInput)
     }
   }
 
@@ -737,6 +741,7 @@ function ItemDetailModalContent({
                   value={newTagInput}
                   onChange={(e) => setNewTagInput(e.target.value)}
                   onKeyDown={handleAddTag}
+                  onBlur={() => commitNewTag(newTagInput)}
                   placeholder="+ Etiket ekle (Enter)..."
                   className="bg-black/40 px-2.5 py-1 rounded-lg text-xs text-white border border-white/10 outline-none focus:border-indigo-500 placeholder:text-zinc-500 w-36"
                 />

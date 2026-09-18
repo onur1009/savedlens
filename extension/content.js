@@ -100,6 +100,21 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     return null
   }
 
+  // ── Helper: extract JSON-LD data if present ─────────────────────
+  function getInstagramJsonLd() {
+    try {
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]')
+      for (const s of scripts) {
+        if (!s.textContent) continue
+        const parsed = JSON.parse(s.textContent)
+        if (parsed && (parsed['@type'] === 'SocialMediaPosting' || parsed['@type'] === 'VideoObject' || parsed.author || parsed.headline)) {
+          return parsed
+        }
+      }
+    } catch {}
+    return null
+  }
+
   // ── Extract Instagram Items from DOM ──────────────────────────
   function extractInstagramFromDOM() {
     const extracted = []
@@ -111,16 +126,26 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
 
     if (singlePost) {
       seenShortcodes.add(singlePost.shortcode)
+      const jsonLd = getInstagramJsonLd()
 
       // Author extraction with fallbacks
       let authorName = 'instagram_creator'
-      const authorEl = document.querySelector(
-        'header a, article h2 a, [role="main"] header a, a[role="link"][tabindex="0"], a[href^="/"][role="link"]'
-      )
-      if (authorEl && authorEl.textContent) {
-        const text = authorEl.textContent.trim().replace(/^@/, '')
-        if (text && text !== 'Instagram' && !text.includes(' ')) {
-          authorName = text
+
+      if (jsonLd && jsonLd.author) {
+        if (typeof jsonLd.author === 'string') authorName = jsonLd.author
+        else if (jsonLd.author.name) authorName = jsonLd.author.name
+        else if (jsonLd.author.identifier) authorName = jsonLd.author.identifier
+      }
+
+      if (authorName === 'instagram_creator' || authorName === 'instagram_user') {
+        const authorEl = document.querySelector(
+          'header a, article h2 a, [role="main"] header a, a[role="link"][tabindex="0"], a[href^="/"][role="link"]'
+        )
+        if (authorEl && authorEl.textContent) {
+          const text = authorEl.textContent.trim().replace(/^@/, '')
+          if (text && text !== 'Instagram' && !text.includes(' ')) {
+            authorName = text
+          }
         }
       }
 
@@ -139,7 +164,12 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
       const imgEl = document.querySelector(
         'article img[style*="object-fit"], article img, [role="main"] img, [role="presentation"] img'
       )
-      const mediaUrl = getBestImageSrc(imgEl) || document.querySelector('meta[property="og:image"]')?.content || null
+      const mediaUrl =
+        jsonLd?.contentUrl ||
+        jsonLd?.thumbnailUrl ||
+        getBestImageSrc(imgEl) ||
+        document.querySelector('meta[property="og:image"]')?.content ||
+        null
 
       // Caption
       let captionText = ''

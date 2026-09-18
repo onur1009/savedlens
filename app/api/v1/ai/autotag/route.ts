@@ -99,9 +99,9 @@ Yanıtını SADECE şu JSON yapısında ver:
 
     // If online and bookmark_id provided, update bookmark record
     if (parsed.data.bookmark_id && isSupabaseConfigured()) {
-      const { createClient } = await import('@/lib/supabase/server')
-      const supabase = await createClient()
-      await supabase
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const admin = createAdminClient()
+      await admin
         .from('bookmarks')
         .update({
           ai_summary: result.summary,
