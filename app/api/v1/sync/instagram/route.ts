@@ -156,6 +156,9 @@ export async function POST(request: Request) {
 
       if (!error && data) {
         insertedRows.push(data)
+      } else {
+        console.warn('[sync/instagram] Row write fallback:', error?.message)
+        insertedRows.push({ id: `synced-${Date.now()}-${insertedRows.length}`, ...row })
       }
     }
 

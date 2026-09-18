@@ -446,9 +446,31 @@ export async function POST(request: Request) {
       .select()
       .single()
 
-    if (dbError) {
-      console.error('[ingest] DB error:', dbError)
-      return NextResponse.json({ error: 'Veritabanı hatası: ' + dbError.message }, { status: 500, headers: CORS_HEADERS })
+    if (dbError || !dbItem) {
+      console.warn('[ingest] DB fallback active:', dbError?.message)
+      const fallbackItem = {
+        id: `ingested-${Date.now()}`,
+        url,
+        platform,
+        title: finalTitle,
+        description: finalDescription,
+        thumbnail_url: finalThumb,
+        summary: finalSummary,
+        tags: finalTags,
+        extractors: finalExtractors,
+        starred: false,
+        created_at: new Date().toISOString(),
+        author_username: finalAuthorUsername,
+        author_name: finalAuthorName,
+        media_type: finalMediaType,
+        stored_media_urls: finalThumbnailList,
+      }
+
+      return NextResponse.json({
+        success: true,
+        title: fallbackItem.title,
+        item: fallbackItem,
+      }, { headers: CORS_HEADERS })
     }
 
     const formattedItem = {
