@@ -381,21 +381,18 @@ export async function POST(request: Request) {
 
     // 1. Check Bearer / Token header (Extension or API calls)
     const authHeader = request.headers.get('authorization') || request.headers.get('x-savedlens-token')
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
     if (authHeader) {
       const token = authHeader.replace(/^Bearer\s+/i, '').trim()
       if (token && token !== 'demo-user-token-offline') {
-        const admin = createAdminClient()
-        // Try profile by ID
-        const { data: profile } = await admin.from('profiles').select('id').eq('id', token).single()
-        if (profile?.id) {
-          userId = profile.id
-          clientSupabase = admin as any
+        if (UUID_REGEX.test(token)) {
+          userId = token
         } else {
-          // Try auth.admin.getUserById
-          const { data: authUser } = await admin.auth.admin.getUserById(token)
-          if (authUser?.user) {
-            userId = authUser.user.id
-            clientSupabase = admin as any
+          const admin = createAdminClient()
+          const { data: profile } = await admin.from('profiles').select('id').eq('id', token).single()
+          if (profile?.id) {
+            userId = profile.id
           }
         }
       }

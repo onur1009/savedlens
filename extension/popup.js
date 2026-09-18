@@ -154,15 +154,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return false
   }
 
-  // ── Helper: validate token before API calls ──────────────────
-  function validateToken() {
+  // ── Helper: retrieve token before API calls (non-blocking) ─────
+  function getToken() {
     const token = tokenInput.value.trim()
     if (!token) {
-      log('⚠️ Kişisel Eşitleme Anahtarı (Token) girilmemiş!')
-      log('💡 savedlens.vercel.app/dashboard/settings/sync sayfasını açmak için buraya tıklayın.')
-      // Open sync settings to get token
-      chrome.tabs.create({ url: 'https://savedlens.vercel.app/dashboard/settings/sync', active: true })
-      return null
+      log('💡 İpucu: Token girilmediyse oturum çerezleriniz veya varsayılan profiliniz kullanılır.')
     }
     return token
   }
@@ -175,8 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
-    const token = validateToken()
-    if (!token) return
+    const token = getToken()
 
     btnSaveTab.disabled = true
     log(`Sayfa taranıyor: ${activeTab.title || activeTab.url.slice(0, 40)}...`)
@@ -241,8 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── 4. Action: Sync Instagram Saved Posts from DOM ────────────
   btnSyncInstagram.addEventListener('click', async () => {
     const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
-    const token = validateToken()
-    if (!token) return
+    const token = getToken()
 
     if (!activeTab || !activeTab.url || !activeTab.url.includes('instagram.com')) {
       log('⚠️ Instagram sekmesi bulunamadı. instagram.com/saved sayfası açılıyor...')
