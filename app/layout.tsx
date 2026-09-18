@@ -26,6 +26,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'SavedLens',
   },
+  manifest: '/manifest.json',
   robots: { index: true, follow: true },
 }
 

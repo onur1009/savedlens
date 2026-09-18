@@ -3,26 +3,24 @@
 import { useState, useEffect } from 'react'
 import {
   Smartphone,
-  CheckCircle2,
-  Copy,
   Check,
   Send,
   ExternalLink,
   ShieldCheck,
   Zap,
   KeyRound,
-  Download,
   Share2,
   Sparkles,
   Terminal,
   MessageSquare,
+  Globe,
+  Layers,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function MobileSyncSettingsPage() {
   const [token, setToken] = useState<string>('')
   const [copiedToken, setCopiedToken] = useState(false)
-  const [copiedWebhook, setCopiedWebhook] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [testResult, setTestResult] = useState<string | null>(null)
 
@@ -43,8 +41,6 @@ export default function MobileSyncSettingsPage() {
     loadUserToken()
   }, [])
 
-  const webhookUrl = `https://savedlens.vercel.app/api/v1/mobile/ingest?token=${token}`
-
   function handleCopyToken() {
     if (!token) return
     navigator.clipboard.writeText(token)
@@ -52,10 +48,21 @@ export default function MobileSyncSettingsPage() {
     setTimeout(() => setCopiedToken(false), 2000)
   }
 
-  function handleCopyWebhook() {
-    navigator.clipboard.writeText(webhookUrl)
-    setCopiedWebhook(true)
-    setTimeout(() => setCopiedWebhook(false), 2000)
+  // Trigger Native Browser Web Share API if supported
+  async function handleNativeShareTest() {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'KREP PİZZA 🍕 — SavedLens Test',
+          text: '5 Malzemeyle nefis fırınsız krep pizza tarifi!',
+          url: 'https://www.instagram.com/reel/C-mobile_test_123/',
+        })
+      } catch {
+        // user cancelled or share failed
+      }
+    } else {
+      alert('Cihazınızda yerel Paylaşım Menüsü (Web Share API) bu tarayıcıda desteklenmiyor. Lütfen mobil cihazınızda Safari veya Chrome ile deneyin.')
+    }
   }
 
   async function handleTestMobileIngest() {
@@ -71,7 +78,7 @@ export default function MobileSyncSettingsPage() {
         },
         body: JSON.stringify({
           url: 'https://www.instagram.com/reel/C-mobile_test_123/',
-          text: 'https://www.instagram.com/reel/C-mobile_test_123/ — Mobil Kestirme Test Gönderisi',
+          text: 'https://www.instagram.com/reel/C-mobile_test_123/ — Yerel Mobil Paylaşım Testi',
         }),
       })
 
@@ -94,96 +101,83 @@ export default function MobileSyncSettingsPage() {
       {/* Header */}
       <div>
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-pink-500/20 border border-pink-500/30 flex items-center justify-center text-pink-400">
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
             <Smartphone className="w-5 h-5" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)]">
-            Mobil Kaydetme (iOS Kestirmeler & Telegram Bot)
+            Mobil Yerel Paylaşım Menüsü & Telegram Bot
           </h1>
         </div>
         <p className="text-sm text-[var(--text-secondary)] mt-1">
-          Uygulama yüklemeden iPhone, iPad veya Android cihazınızdan Instagram Reels, TikTok ve Web bağlantılarını tek tıkla SavedLens hesabınıza aktarın.
+          Kestirme veya uygulama indirmeye gerek kalmadan, telefonunuzun kendi <strong>Paylaş (Share)</strong> menüsünden ve Telegram üzerinden içerikleri yapay zeka ile SavedLens kütüphanenize aktarın.
         </p>
       </div>
 
-      {/* ── 1. iOS Kestirmeler (Apple Shortcuts) ───────────────── */}
+      {/* ── 1. Yerel Paylaşım Menüsü (Web Share Target / PWA) ──── */}
       <div className="glass rounded-2xl p-6 glow-border flex flex-col gap-5 relative overflow-hidden">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-pink-600 to-rose-600 flex items-center justify-center text-white font-bold shadow-lg">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white font-bold shadow-lg">
               <Share2 className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-[var(--text-primary)]">
-                Özellik 1: iOS Kestirmeler (Apple Shortcuts)
+                Özellik 1: Cihazın Yerel Paylaşım Menüsü (PWA Web Share Target)
               </h3>
               <p className="text-xs text-[var(--text-muted)]">
-                iPhone / iPad cihazınızda Paylaş menüsüne SavedLens butonunu ekler.
+                Instagram, TikTok, YouTube veya Safari&apos;deki &quot;Paylaş&quot; listenize SavedLens amblemini 1. sınıf olarak ekler.
               </p>
             </div>
           </div>
 
-          <a
-            href={`https://www.icloud.com/shortcuts/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shrink-0"
+          <button
+            onClick={handleNativeShareTest}
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shrink-0"
           >
-            <Download className="w-4 h-4" />
-            <span>Kestirmeyi Yükle</span>
-          </a>
+            <Share2 className="w-4 h-4" />
+            <span>Paylaşım Menüsünü Test Et</span>
+          </button>
         </div>
 
-        {/* Setup Steps Grid */}
+        {/* 3 Step Visual Setup for PWA Native Share Target */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-1.5">
-            <span className="w-6 h-6 rounded-full bg-pink-950/60 text-pink-400 text-xs font-bold flex items-center justify-center border border-pink-800/40">
+            <div className="w-6 h-6 rounded-full bg-indigo-950/80 text-indigo-400 text-xs font-bold flex items-center justify-center border border-indigo-800/40">
               1
-            </span>
-            <h4 className="text-xs font-bold text-white">Kestirmeyi Ekle</h4>
+            </div>
+            <h4 className="text-xs font-bold text-white flex items-center gap-1">
+              <Globe className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Safari / Chrome&apos;da Aç</span>
+            </h4>
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Yukarıdaki <strong>Kestirmeyi Yükle</strong> butonuna tıklayarak iPhone Kestirmeler uygulamanıza ekleyin.
+              Telefonunuzda Safari veya Chrome ile <code className="text-zinc-200 font-mono">savedlens.vercel.app</code> adresini açın.
             </p>
           </div>
 
           <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-1.5">
-            <span className="w-6 h-6 rounded-full bg-pink-950/60 text-pink-400 text-xs font-bold flex items-center justify-center border border-pink-800/40">
+            <div className="w-6 h-6 rounded-full bg-indigo-950/80 text-indigo-400 text-xs font-bold flex items-center justify-center border border-indigo-800/40">
               2
-            </span>
-            <h4 className="text-xs font-bold text-white">Webhook URL Yapıştır</h4>
+            </div>
+            <h4 className="text-xs font-bold text-white flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Ana Ekrana Ekle</span>
+            </h4>
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Kestirme ayarlarındaki URL kısmına aşağıdaki kişisel webhook adresinizi yapıştırın.
+              Tarayıcı menüsünden <strong>&quot;Ana Ekrana Ekle&quot;</strong> (Add to Home Screen) butonuna tıklayın.
             </p>
           </div>
 
           <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] space-y-1.5">
-            <span className="w-6 h-6 rounded-full bg-pink-950/60 text-pink-400 text-xs font-bold flex items-center justify-center border border-pink-800/40">
+            <div className="w-6 h-6 rounded-full bg-indigo-950/80 text-indigo-400 text-xs font-bold flex items-center justify-center border border-indigo-800/40">
               3
-            </span>
-            <h4 className="text-xs font-bold text-white">Paylaş & Kaydet!</h4>
+            </div>
+            <h4 className="text-xs font-bold text-white flex items-center gap-1">
+              <Share2 className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Paylaşım Listesinde Seç!</span>
+            </h4>
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              Instagram veya Safari&apos;de Paylaş &gt; <strong>SavedLens&apos;e Aktar</strong> butonuna basın. Anında arşivlenir!
+              Instagram veya herhangi bir uygulamada <strong>Paylaş &gt; SavedLens</strong> seçin. İçerik anında yapay zeka ile arşivlenir!
             </p>
-          </div>
-        </div>
-
-        {/* Webhook Address Box */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-zinc-300">Kişisel Mobil Webhook Adresiniz:</label>
-          <div className="flex items-center gap-2 p-1.5 rounded-xl bg-black/60 border border-[var(--border)]">
-            <input
-              type="text"
-              readOnly
-              value={webhookUrl}
-              className="flex-1 bg-transparent px-3 py-1 text-xs font-mono text-pink-300 outline-none select-all truncate"
-            />
-            <button
-              onClick={handleCopyWebhook}
-              className="px-3.5 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm shrink-0"
-            >
-              {copiedWebhook ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedWebhook ? 'Kopyalandı!' : 'Kopyala'}</span>
-            </button>
           </div>
         </div>
       </div>
@@ -228,7 +222,7 @@ export default function MobileSyncSettingsPage() {
               onClick={handleCopyToken}
               className="text-[11px] text-sky-300 hover:text-white flex items-center gap-1 font-medium"
             >
-              {copiedToken ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              {copiedToken ? <Check className="w-3 h-3 text-emerald-400" /> : <Share2 className="w-3 h-3" />}
               <span>Token Kopyala</span>
             </button>
           </div>
@@ -249,17 +243,17 @@ export default function MobileSyncSettingsPage() {
           <div>
             <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
               <Zap className="w-4 h-4 text-amber-400" />
-              Mobil Kaydetme API Testi (Shortcuts & Webhook)
+              Yerel Mobil Paylaşım API Testi (Share Target)
             </h3>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Doğrudan <code className="text-pink-400 font-mono">POST /api/v1/mobile/ingest</code> servisine mobil paylaşım simülasyonu gönderir.
+              Doğrudan <code className="text-indigo-400 font-mono">POST /api/v1/mobile/ingest</code> servisine mobil paylaşım simülasyonu gönderir.
             </p>
           </div>
 
           <button
             onClick={handleTestMobileIngest}
             disabled={testStatus === 'loading'}
-            className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50 shadow-md"
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50 shadow-md"
           >
             {testStatus === 'loading' ? (
               <Sparkles className="w-3.5 h-3.5 animate-spin" />

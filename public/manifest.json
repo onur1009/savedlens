@@ -1,0 +1,27 @@
+{
+  "name": "SavedLens — AI Content Library",
+  "short_name": "SavedLens",
+  "description": "Instagram, TikTok, YouTube ve Web içeriklerinizi yapay zeka ile arşivleyin ve yönetin.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0f",
+  "theme_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/globe.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}
