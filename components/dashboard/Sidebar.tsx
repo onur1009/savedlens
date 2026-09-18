@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Tag,
   Star,
+  Smartphone,
   RefreshCw,
   Download,
   ChefHat,
@@ -43,6 +44,7 @@ const mainNav = [
 ]
 
 const toolNav = [
+  { href: '/dashboard/settings/mobile', label: 'Mobil (Shortcuts & Bot)', icon: Smartphone },
   { href: '/dashboard/settings/sync', label: 'Chrome Uzantısı (Sync)', icon: RefreshCw },
   { href: '/dashboard/settings/export', label: 'Dışa Aktar (Export)', icon: Download },
 ]
