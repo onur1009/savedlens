@@ -1,8 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import Image from 'next/image'
-import Link from 'next/link'
+
+function useIsClient() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
+}
 import {
   X,
   ExternalLink,
@@ -17,9 +25,7 @@ import {
   Trash2,
   Check,
   Sparkles,
-  Layers,
   Video,
-  FileText,
   Calendar,
   ShieldCheck,
   Folder,
@@ -27,6 +33,10 @@ import {
   Loader2,
   Play,
   Image as ImageIcon,
+  Copy,
+  ShoppingBag,
+  HeartPulse,
+  BookOpen,
 } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
 import { formatBookmarkTitle, extractRealAuthor, extractInstagramShortcode } from '@/lib/bookmark-formatter'
@@ -55,9 +65,19 @@ const PLATFORM_COLORS: Record<string, string> = {
   web: '#7c5cfc',
 }
 
+const SMART_CATEGORIES = [
+  { id: 'recipe', label: 'Tarifler', icon: ChefHat, color: '#f59e0b', desc: 'Yemek & Tatlı' },
+  { id: 'health', label: 'Sağlık & Doktor', icon: HeartPulse, color: '#10b981', desc: 'Tıp, Hekim, Tedavi' },
+  { id: 'productivity', label: 'Yazılım & AI', icon: Code2, color: '#6366f1', desc: 'Kod & Verimlilik' },
+  { id: 'travel', label: 'Gezi & Mekan', icon: MapPin, color: '#3b82f6', desc: 'Kafe & Rota' },
+  { id: 'product', label: 'Ürün & İndirim', icon: ShoppingBag, color: '#ec4899', desc: 'Fırsat & Kampanya' },
+  { id: 'book_movie', label: 'Kitap & Dizi', icon: BookOpen, color: '#8b5cf6', desc: 'Film & İnceleme' },
+  { id: 'other', label: 'Diğer', icon: Tag, color: '#a1a1aa', desc: 'Genel İçerik' },
+]
+
 export default function ItemDetailModal(props: ItemDetailModalProps) {
   if (!props.item) return null
-  return <ItemDetailModalContent {...props} item={props.item} />
+  return <ItemDetailModalContent key={props.item.id} {...props} item={props.item} />
 }
 
 function ItemDetailModalContent({
@@ -73,14 +93,19 @@ function ItemDetailModalContent({
   onItemDeleted?: (deletedId: string) => void
   userCollections?: CollectionOption[]
 }) {
+  const isClient = useIsClient()
   const [copied, setCopied] = useState(false)
   const [discountCopied, setDiscountCopied] = useState(false)
+  const [recipeCopied, setRecipeCopied] = useState(false)
+  const [transcriptCopied, setTranscriptCopied] = useState(false)
   const [isFavorite, setIsFavorite] = useState(item.starred ?? false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [showPlayer, setShowPlayer] = useState(false)
 
   // Categorization & Tags State
+  const [currentCategory, setCurrentCategory] = useState<string>(item.category || 'other')
+  const [isSavingCategory, setIsSavingCategory] = useState(false)
   const [collections, setCollections] = useState<CollectionOption[]>(userCollections)
   const [currentColId, setCurrentColId] = useState<string | null>(item.collection_id || null)
   const [newColName, setNewColName] = useState('')
@@ -94,13 +119,54 @@ function ItemDetailModalContent({
   const [isAutoCategorizing, setIsAutoCategorizing] = useState(false)
   const [autoCatMessage, setAutoCatMessage] = useState<string | null>(null)
 
+  // Scroll locking (prevents background body scroll and layout misalignment)
   useEffect(() => {
-    setIsFavorite(item.starred ?? false)
-    setImageError(false)
-    setShowPlayer(false)
-    setCurrentColId(item.collection_id || null)
-    setTags(item.tags || [])
-  }, [item])
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
+
+  // Smart Category Assignment
+  async function handleSelectCategory(catId: string) {
+    setCurrentCategory(catId)
+    setIsSavingCategory(true)
+
+    const updatedExtractors = {
+      ...(item.extractors || {}),
+      recipe: catId === 'recipe',
+      location: catId === 'travel',
+      discount: catId === 'product' ? (item.extractors?.discount ?? true) : false,
+      code: catId === 'productivity',
+      health: catId === 'health',
+    }
+
+    const updated = {
+      ...item,
+      category: catId,
+      extractors: updatedExtractors,
+    }
+
+    if (onItemUpdated) {
+      onItemUpdated(updated)
+    }
+
+    try {
+      await fetch(`/api/v1/bookmarks/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: catId,
+          extractors: updatedExtractors,
+        }),
+      })
+    } catch (err) {
+      console.error('Failed to update category:', err)
+    } finally {
+      setIsSavingCategory(false)
+    }
+  }
 
   // Fetch collections if not provided
   useEffect(() => {
@@ -129,7 +195,6 @@ function ItemDetailModalContent({
 
   const platform = item.platform?.toLowerCase() ?? 'web'
   const platformColor = PLATFORM_COLORS[platform] ?? '#7c5cfc'
-  const hasExtractors = item.extractors && Object.keys(item.extractors).length > 0
   const isBackedUp = Boolean(item.stored_media_urls && item.stored_media_urls.length > 0)
   const isInstagram = platform === 'instagram'
   const isReel =
@@ -147,8 +212,6 @@ function ItemDetailModalContent({
     year: 'numeric',
   }).format(new Date(item.created_at))
 
-  // Find active collection details
-  const activeCollection = collections.find((c) => c.id === currentColId)
 
   // 1. Assign collection
   async function handleAssignCollection(collectionId: string | null) {
@@ -289,6 +352,7 @@ function ItemDetailModalContent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bookmark_id: item.id,
+          title: item.title,
           caption: `${item.title || ''} ${item.description || ''}`,
         }),
       })
@@ -297,19 +361,24 @@ function ItemDetailModalContent({
       if (res.ok && data.success) {
         const mergedTags = Array.from(new Set([...tags, ...(data.tags || [])]))
         setTags(mergedTags)
+        if (data.category) {
+          setCurrentCategory(data.category)
+        }
 
         const updatedItem = {
           ...item,
+          category: data.category || item.category,
           summary: data.summary || item.summary,
           tags: mergedTags,
           extractors: data.extractors || item.extractors,
+          actionable_data: data.actionable_data || item.actionable_data,
         }
 
         if (onItemUpdated) {
           onItemUpdated(updatedItem)
         }
 
-        setAutoCatMessage('✨ Yapay zeka ile otomatik kategorize edildi ve yeni etiketler eklendi!')
+        setAutoCatMessage('✨ Yapay zeka ile otomatik kategorize edildi ve güncellendi!')
         setTimeout(() => setAutoCatMessage(null), 5000)
       }
     } catch (err) {
@@ -380,22 +449,34 @@ function ItemDetailModalContent({
     textContent.match(/(CLOUD\d{4}|INDIRIM\d{2}|YAZILIM\d{2})/i)
   const promoCode = promoMatch ? promoMatch[1] : 'SAVEDLENS2026'
 
-  return (
+  if (!isClient) return null
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md animate-fade-in"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/85 backdrop-blur-md overflow-hidden animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl max-h-[94vh] rounded-2xl md:rounded-3xl bg-[#121218] border border-white/10 shadow-[0_30px_100px_rgba(0,0,0,0.95)] overflow-hidden flex flex-col md:flex-row animate-scale-in"
+        className="relative w-full max-w-5xl h-[92vh] max-h-[92vh] md:h-[88vh] rounded-2xl md:rounded-3xl bg-[#121218] border border-white/10 shadow-[0_30px_100px_rgba(0,0,0,0.95)] flex flex-col md:flex-row overflow-hidden animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Universal Floating Close Button - Always visible on top right */}
+        <button
+          onClick={onClose}
+          aria-label="Kapat"
+          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-40 p-2 sm:p-2.5 rounded-xl bg-black/80 hover:bg-zinc-800 text-white border border-white/20 backdrop-blur-md transition-all shadow-xl hover:scale-105 active:scale-95"
+          title="Kapat (ESC)"
+        >
+          <X className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+        </button>
+
         {/* ── Left Column: Media & Platform Showcase ─────────── */}
-        <div className="w-full md:w-5/12 bg-[#0d0d12] flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/10 relative overflow-hidden shrink-0">
+        <div className="w-full md:w-5/12 h-[30vh] min-h-[190px] max-h-[35vh] md:h-full md:max-h-none bg-[#0d0d12] flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/10 relative overflow-hidden shrink-0">
           {showPlayer && shortcode ? (
-            <div className="relative w-full h-[360px] md:h-full min-h-[360px] md:min-h-[480px] bg-black flex flex-col items-center justify-center">
+            <div className="relative w-full h-full min-h-[190px] md:min-h-full bg-black flex flex-col items-center justify-center">
               <iframe
                 src={`https://www.instagram.com/reel/${shortcode}/embed/`}
-                className="w-full h-full min-h-[360px] md:min-h-[480px] border-0"
+                className="w-full h-full border-0"
                 allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
                 allowFullScreen
                 title="Instagram Reel"
@@ -403,14 +484,14 @@ function ItemDetailModalContent({
               <button
                 type="button"
                 onClick={() => setShowPlayer(false)}
-                className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[11px] font-semibold border border-white/20 backdrop-blur-md flex items-center gap-1 z-20 shadow-lg"
+                className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-black/80 hover:bg-black text-white text-[11px] font-semibold border border-white/20 backdrop-blur-md flex items-center gap-1 z-20 shadow-lg"
               >
                 <ImageIcon className="w-3.5 h-3.5" />
                 <span>Görsele Dön</span>
               </button>
             </div>
           ) : item.thumbnail_url && !imageError ? (
-            <div className="relative w-full aspect-[16/10] md:aspect-auto md:h-full min-h-[240px] md:min-h-[380px] bg-black/60 overflow-hidden group">
+            <div className="relative w-full h-full min-h-[190px] bg-black/60 overflow-hidden group">
               <Image
                 src={item.thumbnail_url}
                 alt={cleanTitle}
@@ -445,10 +526,10 @@ function ItemDetailModalContent({
                 <button
                   type="button"
                   onClick={() => setShowPlayer(true)}
-                  className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/70 hover:bg-pink-600/90 backdrop-blur-md border border-white/30 text-white flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-[0_0_30px_rgba(225,48,108,0.5)] z-20 group"
+                  className="absolute inset-0 m-auto w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-black/70 hover:bg-pink-600/90 backdrop-blur-md border border-white/30 text-white flex items-center justify-center transition-all duration-300 hover:scale-110 shadow-[0_0_30px_rgba(225,48,108,0.5)] z-20 group"
                   title="Reels Oynat"
                 >
-                  <Play className="w-7 h-7 fill-white text-white ml-1 transition-transform group-hover:scale-110" />
+                  <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-white text-white ml-1 transition-transform group-hover:scale-110" />
                 </button>
               )}
 
@@ -473,9 +554,9 @@ function ItemDetailModalContent({
               )}
             </div>
           ) : (
-            <div className="w-full h-full min-h-[240px] md:min-h-[380px] p-8 flex flex-col items-center justify-center text-center bg-gradient-to-br from-zinc-900 via-[#161622] to-black">
+            <div className="w-full h-full min-h-[190px] p-6 flex flex-col items-center justify-center text-center bg-gradient-to-br from-zinc-900 via-[#161622] to-black">
               <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-xl mb-3"
+                className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-xl mb-3"
                 style={{ backgroundColor: platformColor }}
               >
                 {platform.slice(0, 2).toUpperCase()}
@@ -491,7 +572,7 @@ function ItemDetailModalContent({
                 <button
                   type="button"
                   onClick={() => setShowPlayer(true)}
-                  className="mt-4 px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg transition-all"
+                  className="mt-3 px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg transition-all"
                 >
                   <Play className="w-4 h-4 fill-white" />
                   <span>Reels Oynat</span>
@@ -502,12 +583,13 @@ function ItemDetailModalContent({
         </div>
 
         {/* ── Right Column: Categorization, AI & Content ───────── */}
-        <div className="w-full md:w-7/12 flex flex-col justify-between max-h-[65vh] md:max-h-[92vh] overflow-y-auto p-4 sm:p-6 md:p-7 space-y-5 bg-[#121218]">
+        <div className="w-full md:w-7/12 flex-1 h-full flex flex-col justify-between overflow-y-auto p-4 sm:p-6 md:p-7 space-y-5 bg-[#121218]">
           <div className="space-y-4">
-            {/* 1. Header: Author info on left, Star + Close on right */}
-            <div className="flex items-center justify-between gap-4 pb-3 border-b border-white/10">
+            {/* 1. Header: Author info on left, Star on right (Close button is floating top right) */}
+            <div className="flex items-center justify-between gap-4 pb-3 border-b border-white/10 pr-10">
               <div className="flex items-center gap-2.5 min-w-0">
                 {item.author_avatar ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
                   <img
                     src={item.author_avatar}
                     alt={realAuthor.username}
@@ -534,7 +616,7 @@ function ItemDetailModalContent({
                 </div>
               </div>
 
-              {/* Action buttons: Star & Close button */}
+              {/* Action buttons: Star */}
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={handleToggleFavorite}
@@ -547,24 +629,62 @@ function ItemDetailModalContent({
                     }`}
                   />
                 </button>
-
-                <button
-                  onClick={onClose}
-                  aria-label="Kapat"
-                  className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors border border-white/10"
-                  title="Kapat (ESC)"
-                >
-                  <X className="w-4 h-4" />
-                </button>
               </div>
             </div>
 
-            {/* 2. Interactive Koleksiyon / Kategori Seçici Bar */}
+            {/* 2. Akıllı Kategori Seçici Barı (Category Selector) */}
+            <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-white/10 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-zinc-200">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <span>Akıllı Kategori:</span>
+                </div>
+                {isSavingCategory && (
+                  <span className="text-[11px] text-purple-400 flex items-center gap-1 font-medium">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Güncelleniyor...
+                  </span>
+                )}
+              </div>
+
+              {/* 6 Core Smart Categories */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                {SMART_CATEGORIES.map((cat) => {
+                  const isSelected = currentCategory === cat.id
+                  const Icon = cat.icon
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleSelectCategory(cat.id)}
+                      className={`px-2.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-between border text-left ${
+                        isSelected
+                          ? 'ring-1 shadow-md font-bold'
+                          : 'bg-zinc-800/40 text-zinc-400 border-white/5 hover:bg-zinc-800 hover:text-zinc-200'
+                      }`}
+                      style={{
+                        backgroundColor: isSelected ? `${cat.color}25` : undefined,
+                        borderColor: isSelected ? cat.color : undefined,
+                        color: isSelected ? '#ffffff' : undefined,
+                        boxShadow: isSelected ? `0 0 15px ${cat.color}30` : undefined,
+                      }}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Icon className="w-3.5 h-3.5 shrink-0" style={{ color: cat.color }} />
+                        <span className="truncate">{cat.label}</span>
+                      </div>
+                      {isSelected && <Check className="w-3 h-3 shrink-0" style={{ color: cat.color }} />}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 3. Özel Koleksiyon / Klasör Seçici Bar */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-white/10 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs font-bold text-zinc-200">
                   <Folder className="w-4 h-4 text-amber-400" />
-                  <span>Koleksiyon / Kategori:</span>
+                  <span>Koleksiyon / Klasör:</span>
                 </div>
                 {isSavingCol && (
                   <span className="text-[11px] text-indigo-400 flex items-center gap-1 font-medium">
@@ -748,86 +868,238 @@ function ItemDetailModalContent({
               </div>
             </div>
 
-            {/* 6. Structured Extractors */}
-            {hasExtractors && (
-              <div className="space-y-2.5">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                  Akıllı İçerik Çıkarımları
-                </h4>
+            {/* 6. Structured Extractors & Actionable Data (AŞAMA 3) */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                Akıllı İçerik Çıkarımları & Aksiyonlar
+              </h4>
 
-                {/* Recipe Extractor */}
-                {item.extractors?.recipe && (
-                  <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/40 space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
-                      <ChefHat className="w-4 h-4" />
-                      <span>Tarif & Mutfak Kartı</span>
-                    </div>
-                    <p className="text-xs text-amber-200/80 leading-relaxed">
-                      Yemek/tatlı tarifi tespit edildi. Malzemeler ve pişirme adımları kütüphanenize indekslendi.
-                    </p>
-                  </div>
-                )}
+              {(() => {
+                const actData = (item.actionable_data || {}) as Record<string, unknown>
+                const recipeIngredients: string[] = Array.isArray(actData.ingredients) ? (actData.ingredients as string[]) : []
+                const recipeSteps: string[] = Array.isArray(actData.steps) ? (actData.steps as string[]) : []
+                const travelLocations: Array<{ name: string; city?: string; maps_query?: string }> = Array.isArray(actData.locations) ? (actData.locations as Array<{ name: string; city?: string; maps_query?: string }>) : []
+                const productName = actData.product_name ? String(actData.product_name) : null
+                const productBrand = actData.brand ? String(actData.brand) : null
+                const productPrice = actData.estimated_price ? String(actData.estimated_price) : null
+                const prepTime = actData.prep_time ? String(actData.prep_time) : null
 
-                {/* Location Extractor */}
-                {item.extractors?.location && (
-                  <div className="p-3 rounded-xl bg-blue-950/20 border border-blue-800/40 flex items-center justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-blue-300">
-                        <MapPin className="w-4 h-4" />
-                        <span>Mekan / Gezi Önerisi</span>
+                return (
+                  <>
+                    {/* A) Recipe Extractor with Ingredients Checklist & 1-Click Copy */}
+                    {(item.category === 'recipe' || item.extractors?.recipe || recipeIngredients.length > 0) && (
+                      <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-800/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                            <ChefHat className="w-4 h-4 text-amber-400" />
+                            <span>Tarif & Malzeme Listesi</span>
+                          </div>
+                          {Boolean(prepTime) && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-900/50 text-amber-200 border border-amber-700/50 font-semibold">
+                              ⏱ {prepTime}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Ingredients Checklist */}
+                        {recipeIngredients.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                              {recipeIngredients.map((ing, i) => (
+                                <div
+                                  key={i}
+                                  className="p-2 rounded-xl bg-black/30 border border-amber-900/30 text-xs text-amber-100 flex items-start gap-2"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                                  <span>{ing}</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* 1-Click Copy Ingredients Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const text = `🛒 ${cleanTitle} Malzemeleri:\n` + recipeIngredients.map((i) => `• ${i}`).join('\n')
+                                navigator.clipboard.writeText(text)
+                                setRecipeCopied(true)
+                                setTimeout(() => setRecipeCopied(false), 2500)
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all"
+                            >
+                              {recipeCopied ? (
+                                <>
+                                  <Check className="w-4 h-4 text-emerald-300" />
+                                  <span>Malzemeler Panoya Kopyalandı! ✓</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-4 h-4" />
+                                  <span>Malzemeleri Kopyala (Alışveriş Listesi)</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-amber-200/80 leading-relaxed">
+                            Yemek/tatlı tarifi tespit edildi. Yapay zeka ile tam malzeme listesini çıkarmak için yukarıdaki &quot;AI ile Kategorize Et&quot; butonuna tıklayabilirsiniz.
+                          </p>
+                        )}
+
+                        {/* Steps */}
+                        {recipeSteps.length > 0 && (
+                          <div className="pt-2 border-t border-amber-900/30 space-y-1.5">
+                            <span className="text-[11px] font-bold text-amber-300 uppercase">Hazırlanış Adımları:</span>
+                            <ol className="list-decimal list-inside text-xs text-amber-100/90 space-y-1">
+                              {recipeSteps.map((step, idx) => (
+                                <li key={idx} className="leading-relaxed">{step}</li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-blue-200/80">
-                        Keşfedilen lokasyon harita listenize kaydedildi.
-                      </p>
-                    </div>
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title || 'Mekan')}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1 rounded-lg bg-blue-600/80 hover:bg-blue-600 text-white text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors"
-                    >
-                      <span>Haritada Aç</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
+                    )}
 
-                {/* Discount Extractor */}
-                {item.extractors?.discount && (
-                  <div className="p-3 rounded-xl bg-green-950/20 border border-green-800/40 flex items-center justify-between gap-3">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-green-300">
-                        <Ticket className="w-4 h-4" />
-                        <span>İndirim & Fırsat Kodu</span>
+                    {/* B) Travel Extractor with Google Maps Links */}
+                    {(item.category === 'travel' || item.extractors?.location || travelLocations.length > 0) && (
+                      <div className="p-3.5 rounded-2xl bg-blue-950/30 border border-blue-800/40 space-y-2.5">
+                        <div className="flex items-center gap-2 text-xs font-bold text-blue-300">
+                          <MapPin className="w-4 h-4 text-blue-400" />
+                          <span>Mekan & Seyahat Konumları</span>
+                        </div>
+
+                        {travelLocations.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {travelLocations.map((loc, idx) => {
+                              const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc.maps_query || `${loc.name} ${loc.city || ''}`)}`
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between p-2.5 rounded-xl bg-black/30 border border-blue-900/30 text-xs text-blue-100"
+                                >
+                                  <div>
+                                    <p className="font-bold text-white">{loc.name}</p>
+                                    {loc.city && <p className="text-[11px] text-blue-300">{loc.city}</p>}
+                                  </div>
+                                  <a
+                                    href={mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-colors"
+                                  >
+                                    <span>Google Maps&apos;te Ara</span>
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-xs text-blue-200/80">
+                              Keşfedilen lokasyonu Google Maps üzerinde arayın.
+                            </p>
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanTitle)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-md transition-colors"
+                            >
+                              <span>Google Maps&apos;te Ara</span>
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-green-200/80">
-                        Kupon kodu: <code className="font-mono font-bold text-green-300 bg-green-900/50 px-1.5 py-0.5 rounded">{promoCode}</code>
-                      </p>
+                    )}
+
+                    {/* C) Product Extractor */}
+                    {(item.category === 'product' || Boolean(productName)) && (
+                      <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-800/40 flex items-center justify-between gap-3">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                            <ShoppingBag className="w-4 h-4 text-emerald-400" />
+                            <span>{productName || 'Öne Çıkan Ürün'}</span>
+                          </div>
+                          {Boolean(productBrand) && (
+                            <p className="text-[11px] text-emerald-200/70">Marka: {productBrand}</p>
+                          )}
+                        </div>
+                        {Boolean(productPrice) && (
+                          <span className="px-3 py-1 rounded-xl bg-emerald-900/60 text-emerald-300 border border-emerald-600/40 text-xs font-bold">
+                            {productPrice}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+
+              {/* D) Reels Audio Transcript (Whisper API Integration) */}
+              {Boolean(item.transcript) && (
+                <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/40 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
+                      <Mic2 className="w-4 h-4 text-purple-400" />
+                      <span>Reels Ses Deşifresi (OpenAI Whisper)</span>
                     </div>
                     <button
-                      onClick={() => handleCopyDiscount(promoCode)}
-                      className="px-3 py-1 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors"
+                      type="button"
+                      onClick={() => {
+                        if (item.transcript) {
+                          navigator.clipboard.writeText(item.transcript)
+                          setTranscriptCopied(true)
+                          setTimeout(() => setTranscriptCopied(false), 2500)
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 text-[11px] font-semibold flex items-center gap-1 transition-colors"
                     >
-                      {discountCopied ? <Check className="w-3.5 h-3.5" /> : <Ticket className="w-3.5 h-3.5" />}
-                      <span>{discountCopied ? 'Kopyalandı!' : 'Kodu Al'}</span>
+                      {transcriptCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{transcriptCopied ? 'Kopyalandı!' : 'Deşifreyi Kopyala'}</span>
                     </button>
                   </div>
-                )}
-
-                {/* Code Extractor */}
-                {item.extractors?.code && (
-                  <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-800/40 space-y-1.5">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-cyan-300">
-                      <Code2 className="w-4 h-4" />
-                      <span>Kod Snippet</span>
-                    </div>
-                    <div className="bg-black/60 p-2.5 rounded-lg border border-cyan-800/30 text-[11px] font-mono text-cyan-200 overflow-x-auto">
-                      <code>{item.description?.slice(0, 160) || '// Kod parçacığı'}</code>
-                    </div>
+                  <div className="p-3 rounded-xl bg-black/40 border border-purple-900/30 text-xs text-purple-100/90 leading-relaxed max-h-36 overflow-y-auto whitespace-pre-wrap font-sans">
+                    {item.transcript}
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+
+              {/* E) Promo / Discount */}
+              {item.extractors?.discount && (
+                <div className="p-3 rounded-xl bg-green-950/20 border border-green-800/40 flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-green-300">
+                      <Ticket className="w-4 h-4" />
+                      <span>İndirim & Fırsat Kodu</span>
+                    </div>
+                    <p className="text-xs text-green-200/80">
+                      Kupon kodu: <code className="font-mono font-bold text-green-300 bg-green-900/50 px-1.5 py-0.5 rounded">{promoCode}</code>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleCopyDiscount(promoCode)}
+                    className="px-3 py-1 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-xs font-semibold flex items-center gap-1 shrink-0 transition-colors"
+                  >
+                    {discountCopied ? <Check className="w-3.5 h-3.5" /> : <Ticket className="w-3.5 h-3.5" />}
+                    <span>{discountCopied ? 'Kopyalandı!' : 'Kodu Al'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* F) Code Snippet */}
+              {item.extractors?.code && (
+                <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-800/40 space-y-1.5">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-cyan-300">
+                    <Code2 className="w-4 h-4" />
+                    <span>Kod Snippet</span>
+                  </div>
+                  <div className="bg-black/60 p-2.5 rounded-lg border border-cyan-800/30 text-[11px] font-mono text-cyan-200 overflow-x-auto">
+                    <code>{item.description?.slice(0, 160) || '// Kod parçacığı'}</code>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* 7. Original Caption */}
             {item.description && (
@@ -877,6 +1149,7 @@ function ItemDetailModalContent({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

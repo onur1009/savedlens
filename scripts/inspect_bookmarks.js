@@ -1,8 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
-const client = createClient(
-  'https://xdicvknkhwtdmffhyhpx.supabase.co',
-  'sb_publishable_ax8qn1-ZBNiHTzNeq8MXLg_XBSlmnNB'
-);
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!url || !key) {
+  console.error('Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY/NEXT_PUBLIC_SUPABASE_ANON_KEY must be set.');
+  process.exit(1);
+}
+
+const client = createClient(url, key);
 
 async function inspect() {
   const { data: bms, error } = await client

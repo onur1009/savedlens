@@ -271,10 +271,10 @@ export default function CollectionsExplorer({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newColName.trim()}
+                  disabled={!newColName.trim() || isCreating}
                   className="btn-primary px-4 py-2 text-xs font-semibold rounded-xl disabled:opacity-50"
                 >
-                  Oluştur
+                  {isCreating ? 'Oluşturuluyor...' : 'Oluştur'}
                 </button>
               </div>
             </form>

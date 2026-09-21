@@ -1,6 +1,6 @@
 'use client'
 
-import { Search, X, Folder, Video, Star } from 'lucide-react'
+import { Search, X, Star, Sparkles } from 'lucide-react'
 
 const PLATFORMS = [
   { id: 'Hepsi', label: 'Hepsi' },
@@ -23,14 +23,17 @@ interface FilterBarProps {
   onSearchChange?: (query: string) => void
   selectedPlatform?: string
   onPlatformChange?: (platform: string) => void
+  selectedCategory?: string | null
+  onCategoryChange?: (category: string | null) => void
   selectedCollectionId?: string | null
   onCollectionChange?: (colId: string | null) => void
   collections?: CollectionOption[]
   selectedTags?: string[]
-  onTagToggle?: (tag: string) => void
   onClearFilters?: () => void
   onlyStarred?: boolean
   onToggleStarred?: () => void
+  isSemanticSearch?: boolean
+  onToggleSemanticSearch?: () => void
 }
 
 export default function FilterBar({
@@ -38,28 +41,31 @@ export default function FilterBar({
   onSearchChange,
   selectedPlatform = 'Hepsi',
   onPlatformChange,
+  selectedCategory = null,
+  onCategoryChange,
   selectedCollectionId = null,
   onCollectionChange,
   collections = [],
   selectedTags = [],
-  onTagToggle,
   onClearFilters,
   onlyStarred = false,
   onToggleStarred,
+  isSemanticSearch = false,
+  onToggleSemanticSearch,
 }: FilterBarProps) {
   const hasFilters = Boolean(
     searchQuery.trim() ||
     (selectedPlatform && selectedPlatform !== 'Hepsi') ||
+    selectedCategory !== null ||
     selectedCollectionId !== null ||
     selectedTags.length > 0 ||
-    onlyStarred
+    onlyStarred ||
+    isSemanticSearch
   )
-
-  const activeCollection = collections.find((c) => c.id === selectedCollectionId)
 
   return (
     <div className="flex flex-col gap-2">
-      {/* ── Row 1: Search + Starred + Active Filter Status ──── */}
+      {/* ── Row 1: Search + Starred + Semantic Search Toggle + Clear ──── */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
@@ -67,8 +73,16 @@ export default function FilterBar({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange?.(e.target.value)}
-            placeholder="Reels, içerik, yazar (@kullanıcı) veya etiketlerde ara..."
-            className="w-full pl-10 pr-9 py-2 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] transition-all"
+            placeholder={
+              isSemanticSearch
+                ? "🧠 İkinci Beyin Semantik Arama: örn. 'tatlı tarifleri', 'sessiz kahveciler'..."
+                : "Reels, içerik, yazar (@kullanıcı) veya etiketlerde ara..."
+            }
+            className={`w-full pl-10 pr-9 py-2 rounded-xl bg-[var(--bg-surface)] border text-xs sm:text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-all ${
+              isSemanticSearch
+                ? 'border-purple-500/60 focus:border-purple-400 focus:ring-1 focus:ring-purple-400/50 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
+                : 'border-[var(--border)] focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)]'
+            }`}
           />
           {searchQuery && (
             <button
@@ -79,6 +93,23 @@ export default function FilterBar({
             </button>
           )}
         </div>
+
+        {/* AI Semantic Search Mode Button */}
+        {onToggleSemanticSearch && (
+          <button
+            type="button"
+            onClick={onToggleSemanticSearch}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border shrink-0 ${
+              isSemanticSearch
+                ? 'bg-purple-950/60 text-purple-300 border-purple-500/60 shadow-[0_0_15px_rgba(168,85,247,0.3)]'
+                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border)] hover:text-purple-300 hover:border-purple-500/30'
+            }`}
+            title="AI Semantik Arama: Anlam ve kavram benzerliğine göre arar"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${isSemanticSearch ? 'text-purple-400 animate-pulse' : 'text-zinc-400'}`} />
+            <span className="hidden sm:inline">AI Arama</span>
+          </button>
+        )}
 
         {/* Favorite / Starred Quick Toggle */}
         <button
@@ -108,8 +139,34 @@ export default function FilterBar({
         )}
       </div>
 
-      {/* ── Row 2: Platform Pills + Collection Filter Dropdown ── */}
+      {/* ── Row 2: Category Selector + Platform Pills + Collection Filter Dropdown ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        {/* Category Dropdown Selector */}
+        <div className="relative shrink-0">
+          <select
+            value={selectedCategory || ''}
+            onChange={(e) => onCategoryChange?.(e.target.value || null)}
+            aria-label="Kategori Filtresi"
+            className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium cursor-pointer transition-all outline-none appearance-none pr-6 bg-[var(--bg-surface)] ${
+              selectedCategory
+                ? 'border-purple-500 text-purple-300 ring-1 ring-purple-400 font-bold bg-purple-950/30'
+                : 'border-[var(--border)] text-[var(--text-secondary)] hover:text-white'
+            }`}
+          >
+            <option value="">🏷️ Tüm Kategoriler</option>
+            <option value="recipe">🍳 Yemek & Tarifler</option>
+            <option value="health">🩺 Sağlık & Doktor</option>
+            <option value="productivity">💻 Yazılım, Kod & AI</option>
+            <option value="travel">📍 Gezi & Mekan</option>
+            <option value="product">🛍️ Ürün & İndirim</option>
+            <option value="book_movie">🎬 Kitap & Dizi</option>
+            <option value="other">📌 Diğer</option>
+          </select>
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none">
+            ▼
+          </span>
+        </div>
+
         {/* Collection Dropdown Selector */}
         {collections.length > 0 && (
           <div className="relative shrink-0">

@@ -32,7 +32,16 @@ export async function GET() {
       return NextResponse.json({ error: 'Koleksiyonlar getirilemedi' }, { status: 500 })
     }
 
-    const formatted = (collections || []).map((col: any) => ({
+    interface RawCollection {
+      id: string
+      name: string
+      color?: string | null
+      icon?: string | null
+      bookmark_collections?: Array<{ count?: number }>
+      created_at: string
+    }
+
+    const formatted = ((collections as unknown as RawCollection[]) || []).map((col) => ({
       id: col.id,
       name: col.name,
       color: col.color || '#6366f1',

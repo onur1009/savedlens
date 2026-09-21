@@ -25,7 +25,7 @@ export default async function DashboardPage() {
       .select('*, bookmark_collections(collection_id, collections(id, name, color))')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(150),
+      .limit(10000),
     supabase
       .from('collections')
       .select('id, name, color, icon')
@@ -37,7 +37,44 @@ export default async function DashboardPage() {
     console.error('Error fetching bookmarks:', bookmarksRes.error)
   }
 
-  const userCollections = (collectionsRes.data || []).map((c: any) => ({
+  interface RawCollectionRow {
+    id: string
+    name: string
+    color?: string | null
+    icon?: string | null
+  }
+
+  interface RawBookmarkRow {
+    id: string
+    permalink: string
+    platform: string | null
+    caption: string | null
+    author_username?: string | null
+    author_name?: string | null
+    author_avatar?: string | null
+    stored_media_urls?: string[] | null
+    media_urls?: string[] | null
+    ai_summary?: string | null
+    ai_tags?: string[] | null
+    extractors?: Record<string, boolean> | null
+    is_favorite?: boolean | null
+    created_at: string
+    media_type?: string | null
+    status?: 'processing' | 'completed' | 'failed' | null
+    error_message?: string | null
+    transcript?: string | null
+    category?: string | null
+    actionable_data?: Record<string, unknown> | null
+    bookmark_collections?: Array<{
+      collections?: {
+        id: string
+        name: string
+        color?: string | null
+      }
+    }>
+  }
+
+  const userCollections = ((collectionsRes.data as unknown as RawCollectionRow[]) || []).map((c) => ({
     id: c.id,
     name: c.name,
     color: c.color || '#6366f1',
@@ -45,7 +82,7 @@ export default async function DashboardPage() {
   }))
 
   // Map database rows to SavedItem format including collection info
-  const items: SavedItem[] = (bookmarksRes.data || []).map((b: any) => {
+  const items: SavedItem[] = ((bookmarksRes.data as unknown as RawBookmarkRow[]) || []).map((b) => {
     const colObj = b.bookmark_collections?.[0]?.collections
     const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
     const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
@@ -57,18 +94,23 @@ export default async function DashboardPage() {
       title: cleanTitle,
       description: b.caption,
       thumbnail_url: (b.stored_media_urls && b.stored_media_urls[0]) || (b.media_urls && b.media_urls[0]) || null,
-      summary: b.ai_summary,
+      summary: b.ai_summary || null,
       tags: b.ai_tags || [],
       extractors: b.extractors ?? null,
       starred: b.is_favorite ?? false,
       created_at: b.created_at,
       author_username: realAuthor.username,
-      author_avatar: b.author_avatar,
-      media_type: b.media_type,
+      author_avatar: b.author_avatar || undefined,
+      media_type: b.media_type || undefined,
       stored_media_urls: b.stored_media_urls || [],
       collection_id: colObj?.id || null,
       collection_name: colObj?.name || null,
       collection_color: colObj?.color || null,
+      status: b.status || 'completed',
+      error_message: b.error_message || null,
+      transcript: b.transcript || null,
+      category: b.category || null,
+      actionable_data: b.actionable_data || null,
     }
   })
 

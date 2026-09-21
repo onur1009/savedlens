@@ -90,9 +90,10 @@ export default function MobileSyncSettingsPage() {
         setTestStatus('error')
         setTestResult(`✗ Hata: ${data.error || 'Mobil kayıt başarısız'}`)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestStatus('error')
-      setTestResult(`✗ İstek hatası: ${err.message}`)
+      const message = err instanceof Error ? err.message : 'Bilinmeyen hata'
+      setTestResult(`✗ İstek hatası: ${message}`)
     }
   }
 

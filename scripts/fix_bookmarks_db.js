@@ -1,9 +1,14 @@
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  'https://xdicvknkhwtdmffhyhpx.supabase.co',
-  'sb_secret_U9mYUXb_2e1RAXN4AhNieQ_KVwMWIw9'
-);
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!url || !key) {
+  console.error('Error: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set.');
+  process.exit(1);
+}
+
+const supabase = createClient(url, key);
 
 function extractRealAuthor(caption, existingAuthor) {
   if (existingAuthor && existingAuthor !== 'instagram_user' && existingAuthor !== 'kullanıcı') {
@@ -73,6 +78,7 @@ async function run() {
         .update({
           author_username: realAuthor.username,
           author_name: realAuthor.name,
+          caption: cleanedCaption,
         })
         .eq('id', b.id);
 

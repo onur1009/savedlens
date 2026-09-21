@@ -22,10 +22,23 @@ export default async function CollectionsPage() {
       .select('*, bookmark_collections(collection_id)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(100),
+      .limit(10000),
   ])
 
-  const collections: Collection[] = (colRes.data || []).map((col: any) => ({
+  interface RawDbCollection {
+    id: string
+    name: string
+    color?: string | null
+    icon?: string | null
+    bookmark_collections?: Array<{ bookmark_id: string }>
+    created_at: string
+  }
+
+  interface RawDbBookmark extends Omit<Bookmark, 'collections'> {
+    bookmark_collections?: Array<{ collection_id: string }>
+  }
+
+  const collections: Collection[] = ((colRes.data as unknown as RawDbCollection[]) || []).map((col) => ({
     id: col.id,
     name: col.name,
     color: col.color || '#6366f1',
@@ -34,7 +47,7 @@ export default async function CollectionsPage() {
     created_at: col.created_at,
   }))
 
-  const bookmarks: Bookmark[] = (bmRes.data || []).map((b: any) => ({
+  const bookmarks: Bookmark[] = ((bmRes.data as unknown as RawDbBookmark[]) || []).map((b) => ({
     id: b.id,
     user_id: b.user_id,
     platform: b.platform,
@@ -51,7 +64,7 @@ export default async function CollectionsPage() {
     ai_tags: b.ai_tags || [],
     extractors: b.extractors,
     is_favorite: b.is_favorite,
-    collections: b.bookmark_collections?.map((bc: any) => bc.collection_id) || [],
+    collections: b.bookmark_collections?.map((bc) => bc.collection_id) || [],
     saved_at: b.saved_at || b.created_at,
     created_at: b.created_at,
   }))

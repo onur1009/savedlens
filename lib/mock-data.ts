@@ -19,6 +19,49 @@ export interface Tag {
   count: number
 }
 
+export type BookmarkCategory = 'recipe' | 'travel' | 'book_movie' | 'product' | 'productivity' | 'health' | 'other'
+
+export interface ActionableRecipeData {
+  ingredients: string[]
+  steps: string[]
+  prep_time?: string
+  [key: string]: unknown
+}
+
+export interface ActionableTravelLocation {
+  name: string
+  city: string
+  maps_query: string
+  [key: string]: unknown
+}
+
+export interface ActionableTravelData {
+  locations: ActionableTravelLocation[]
+  [key: string]: unknown
+}
+
+export interface ActionableProductData {
+  product_name: string
+  brand?: string
+  estimated_price?: string
+  [key: string]: unknown
+}
+
+export interface ActionableHealthData {
+  doctor_name?: string
+  specialty?: string
+  clinic?: string
+  topics?: string[]
+  [key: string]: unknown
+}
+
+export type ActionableData =
+  | ActionableRecipeData
+  | ActionableTravelData
+  | ActionableProductData
+  | ActionableHealthData
+  | Record<string, unknown>
+
 export interface Bookmark {
   id: string
   user_id?: string
@@ -40,12 +83,20 @@ export interface Bookmark {
     discount?: boolean
     transcript?: boolean
     code?: boolean
+    health?: boolean
+    [key: string]: boolean | undefined
   }
   is_favorite: boolean
   is_archived?: boolean
   collections?: string[] // collection IDs
   saved_at: string
   created_at: string
+  status?: 'processing' | 'completed' | 'failed'
+  error_message?: string | null
+  transcript?: string | null
+  category?: BookmarkCategory | string | null
+  actionable_data?: ActionableData | null
+  embedding?: number[] | null
 }
 
 // Backward-compatible SavedItem for existing views
@@ -54,6 +105,7 @@ export interface SavedItem {
   url: string
   platform: string | null
   title: string | null
+  author_name?: string
   description: string | null
   thumbnail_url: string | null
   summary: string | null
@@ -64,6 +116,8 @@ export interface SavedItem {
     discount?: boolean
     transcript?: boolean
     code?: boolean
+    health?: boolean
+    [key: string]: boolean | undefined
   } | null
   starred: boolean
   created_at: string
@@ -74,6 +128,12 @@ export interface SavedItem {
   collection_id?: string | null
   collection_name?: string | null
   collection_color?: string | null
+  status?: 'processing' | 'completed' | 'failed'
+  error_message?: string | null
+  transcript?: string | null
+  category?: BookmarkCategory | string | null
+  actionable_data?: ActionableData | null
+  embedding?: number[] | null
 }
 
 export const MOCK_COLLECTIONS: Collection[] = [
@@ -99,11 +159,9 @@ export const MOCK_BOOKMARKS: Bookmark[] = [
   {
     id: 'b1',
     platform: 'instagram',
-    external_id: '31948572918239123',
-    permalink: 'https://www.instagram.com/p/C-xyz123/',
-    author_username: 'tasarim_gunlugu',
-    author_name: 'Tasarım Günlüğü',
-    author_avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&crop=faces',
+    permalink: 'https://www.instagram.com/p/C-design123/',
+    author_username: 'ui_trends',
+    author_name: 'UI Designer',
     caption: '2026\'nın En İyi UI Tasarım Trendleri! Minimalist tipografi, mikro-animasyonlar ve fütüristik cam dokuları.',
     media_type: 'carousel',
     media_urls: [
@@ -242,22 +300,24 @@ export const MOCK_ITEMS: SavedItem[] = MOCK_BOOKMARKS.map((b) => ({
   stored_media_urls: b.stored_media_urls,
 }))
 
+export const MOCK_SAVED_ITEMS = MOCK_ITEMS
+
 export const MOCK_USER = {
   id: 'mock-user-id',
   email: 'demo@savedlens.app',
   user_metadata: { full_name: 'Demo Kullanıcı' },
 }
 
-const DEFAULT_SUPABASE_URL = 'https://xdicvknkhwtdmffhyhpx.supabase.co'
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_ax8qn1-ZBNiHTzNeq8MXLg_XBSlmnNB'
-
-/** Check if Supabase is properly configured */
+/** Check if Supabase is properly configured via environment variables */
 export function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY
-  return (
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  return Boolean(
+    url &&
     url.startsWith('https://') &&
     url.includes('.supabase.co') &&
+    key &&
     key.length > 20
   )
 }
+

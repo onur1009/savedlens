@@ -42,8 +42,9 @@ export async function GET(request: Request) {
       const res = await fetch(`https://api.telegram.org/bot${botToken}/setWebhook?url=${encodeURIComponent(webhookUrl)}`)
       const data = await res.json()
       return NextResponse.json({ success: true, telegram_response: data }, { headers: CORS_HEADERS })
-    } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 500, headers: CORS_HEADERS })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Webhook setup failed'
+      return NextResponse.json({ error: message }, { status: 500, headers: CORS_HEADERS })
     }
   }
 
@@ -141,7 +142,7 @@ export async function POST(request: Request) {
 
     await sendTelegramMessage(botToken, chatId, successReply)
     return NextResponse.json({ ok: true }, { headers: CORS_HEADERS })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Telegram webhook error:', err)
     return NextResponse.json({ ok: true }, { headers: CORS_HEADERS })
   }

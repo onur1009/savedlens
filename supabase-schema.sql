@@ -106,6 +106,12 @@ create table if not exists public.bookmarks (
   ai_summary        text,
   ai_tags           text[] default '{}',
   extractors        jsonb default '{}',     -- { recipe, location, discount, transcript }
+  status            text default 'completed' check (status in ('processing', 'completed', 'failed')),
+  error_message     text,
+  transcript        text,
+  category          text default 'other',
+  actionable_data   jsonb default '{}',
+  embedding         vector(1536),
   is_favorite       boolean default false,
   is_archived       boolean default false,
   saved_at          timestamptz default now(),
@@ -169,7 +175,8 @@ create index if not exists idx_bookmarks_search on public.bookmarks using gin(
 );
 
 -- 8. Backward Compatibility: View for legacy saved_items
-create or replace view public.saved_items as
+drop view if exists public.saved_items cascade;
+create view public.saved_items as
 select
   id,
   user_id,
@@ -185,9 +192,68 @@ select
   ai_summary as summary,
   ai_tags as tags,
   extractors,
-  null as raw_html,
-  null as transcript,
+  status,
+  error_message,
+  transcript,
+  category,
+  actionable_data,
+  embedding,
   is_favorite as starred,
   created_at,
   updated_at
 from public.bookmarks;
+
+grant select on public.saved_items to authenticated, service_role;
+
+-- 9. Semantic Vector Search RPC Function (Cosine Similarity)
+create or replace function match_saved_items (
+  query_embedding vector(1536),
+  match_threshold float default 0.25,
+  match_count int default 10,
+  p_user_id uuid default null
+)
+returns table (
+  id uuid,
+  permalink text,
+  title text,
+  description text,
+  summary text,
+  transcript text,
+  category text,
+  actionable_data jsonb,
+  thumbnail_url text,
+  platform text,
+  similarity float
+)
+language plpgsql
+security definer
+as $$
+begin
+  return query
+  select
+    b.id,
+    b.permalink,
+    coalesce(b.author_name, b.author_username, 'İçerik') as title,
+    b.caption as description,
+    b.ai_summary as summary,
+    b.transcript,
+    b.category,
+    b.actionable_data,
+    case
+      when array_length(b.stored_media_urls, 1) > 0 then b.stored_media_urls[1]
+      when array_length(b.media_urls, 1) > 0 then media_urls[1]
+      else null
+    end as thumbnail_url,
+    b.platform,
+    (1 - (b.embedding <=> query_embedding))::float as similarity
+  from public.bookmarks b
+  where (p_user_id is null or b.user_id = p_user_id)
+    and b.embedding is not null
+    and (1 - (b.embedding <=> query_embedding)) > match_threshold
+  order by similarity desc
+  limit match_count;
+end;
+$$;
+
+grant execute on function match_saved_items to authenticated, service_role;
+

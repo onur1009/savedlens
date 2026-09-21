@@ -43,13 +43,17 @@ function ShareTargetContent() {
     const match = textOrUrl.match(/https?:\/\/[^\s]+/i)
     const targetUrl = match ? match[0] : (rawUrl && rawUrl.startsWith('http') ? rawUrl : null)
 
-    if (!targetUrl) {
-      setStatus('error')
-      setErrorMsg('Paylaşılan içerikte geçerli bir web bağlantısı bulunamadı.')
-      return
-    }
+    let isMounted = true
 
     async function handleShareIngest() {
+      if (!targetUrl) {
+        if (isMounted) {
+          setStatus('error')
+          setErrorMsg('Paylaşılan içerikte geçerli bir web bağlantısı bulunamadı.')
+        }
+        return
+      }
+
       try {
         const res = await fetch('/api/v1/mobile/ingest', {
           method: 'POST',
@@ -62,22 +66,31 @@ function ShareTargetContent() {
 
         const data = await res.json()
         if (res.ok && data.success) {
-          setStatus('success')
-          setResultItem({
-            title: data.title || rawTitle || 'Paylaşılan İçerik',
-            author: data.author || 'Sosyal Medya',
-            url: targetUrl || undefined,
-          })
+          if (isMounted) {
+            setStatus('success')
+            setResultItem({
+              title: data.title || rawTitle || 'Paylaşılan İçerik',
+              author: data.author || 'Sosyal Medya',
+              url: targetUrl || undefined,
+            })
+          }
         } else {
           throw new Error(data.error || 'İçerik kaydedilemedi')
         }
-      } catch (err: any) {
-        setStatus('error')
-        setErrorMsg(err.message || 'Paylaşım işlenirken bir hata oluştu.')
+      } catch (err: unknown) {
+        if (isMounted) {
+          setStatus('error')
+          const message = err instanceof Error ? err.message : 'Paylaşım işlenirken bir hata oluştu.'
+          setErrorMsg(message)
+        }
       }
     }
 
     handleShareIngest()
+
+    return () => {
+      isMounted = false
+    }
   }, [rawTitle, rawText, rawUrl])
 
   return (
@@ -116,7 +129,7 @@ function ShareTargetContent() {
             <div className="space-y-2">
               <span className="px-3 py-1 rounded-full bg-emerald-950/60 text-emerald-300 text-xs font-bold border border-emerald-800/50 inline-flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                SavedLens'e Kaydedildi!
+                SavedLens&apos;e Kaydedildi!
               </span>
               <h2 className="text-lg font-bold text-white leading-snug line-clamp-2">
                 {resultItem.title}

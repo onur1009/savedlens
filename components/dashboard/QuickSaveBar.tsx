@@ -64,7 +64,11 @@ export default function QuickSaveBar({
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="Instagram Reel, TikTok, YouTube veya herhangi bir web linki yapıştır..."
+            placeholder={
+              offlineMode
+                ? "Çevrimdışı test modu: Instagram Reel veya web linki yapıştır..."
+                : "Instagram Reel, TikTok, YouTube veya herhangi bir web linki yapıştır..."
+            }
             className="flex-1 bg-transparent text-xs sm:text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none"
             disabled={isPending}
           />

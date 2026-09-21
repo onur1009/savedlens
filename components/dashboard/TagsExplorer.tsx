@@ -12,7 +12,7 @@ interface TagsExplorerProps {
 }
 
 export default function TagsExplorer({ initialTags, initialBookmarks }: TagsExplorerProps) {
-  const [tags, setTags] = useState<Tag[]>(initialTags)
+  const tags = initialTags
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
 

@@ -24,10 +24,32 @@ export default async function DashboardLayout({
     },
   }
 
+  const { data: rawCollections } = await supabase
+    .from('collections')
+    .select('*, bookmark_collections(count)')
+    .eq('user_id', user.id)
+    .order('name', { ascending: true })
+
+  interface RawCol {
+    id: string
+    name: string
+    color?: string | null
+    icon?: string | null
+    bookmark_collections?: Array<{ count?: number }>
+  }
+
+  const initialCollections = ((rawCollections as unknown as RawCol[]) || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    color: c.color || '#6366f1',
+    icon: c.icon || 'folder',
+    count: c.bookmark_collections?.[0]?.count || 0,
+  }))
+
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--bg-base)]">
       <ExtensionSyncBridge userId={user.id} />
-      <Sidebar user={sidebarUser} />
+      <Sidebar user={sidebarUser} initialCollections={initialCollections} />
       {/* Main content: fills remaining space next to sidebar */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 md:ml-64">
         <main className="flex-1 overflow-y-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 pb-24 md:pb-8 min-h-0">

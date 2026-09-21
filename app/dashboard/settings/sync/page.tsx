@@ -6,14 +6,12 @@ import {
   CheckCircle2,
   DownloadCloud,
   Terminal,
-  ExternalLink,
   ShieldCheck,
   Zap,
   KeyRound,
   Copy,
   Check,
   Globe,
-  ArrowRight,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
