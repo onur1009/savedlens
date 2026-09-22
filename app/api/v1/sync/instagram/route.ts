@@ -74,13 +74,33 @@ export async function GET(request: Request) {
       } catch {}
     }
 
-    // 3. Fallback to first profile
+    // 3. Fallback to active library owner
     if (!userId) {
       try {
         const { createAdminClient } = await import('@/lib/supabase/admin')
         const admin = createAdminClient()
-        const { data: profiles } = await admin.from('profiles').select('id').limit(1)
-        if (profiles && profiles.length > 0) userId = profiles[0].id
+        const { data: mainProf } = await admin
+          .from('profiles')
+          .select('id')
+          .ilike('email', '%onur%')
+          .maybeSingle()
+        if (mainProf?.id) {
+          userId = mainProf.id
+        } else {
+          const { data: activeBm } = await admin
+            .from('bookmarks')
+            .select('user_id')
+            .not('user_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (activeBm?.user_id) {
+            userId = activeBm.user_id
+          } else {
+            const { data: profiles } = await admin.from('profiles').select('id').limit(1)
+            if (profiles && profiles.length > 0) userId = profiles[0].id
+          }
+        }
       } catch {}
     }
 
@@ -343,23 +363,33 @@ export async function POST(request: Request) {
       } catch {}
     }
 
-    // 3. Resilient fallback: first registered profile
+    // 3. Resilient fallback: active library owner
     if (!userId) {
       try {
         const { createAdminClient } = await import('@/lib/supabase/admin')
         const admin = createAdminClient()
-        const { data: profiles } = await admin.from('profiles').select('id').limit(1)
-        if (profiles && profiles.length > 0) userId = profiles[0].id
-      } catch {}
-    }
-
-    // 4. Resilient fallback: auth.users list
-    if (!userId) {
-      try {
-        const { createAdminClient } = await import('@/lib/supabase/admin')
-        const admin = createAdminClient()
-        const { data: authData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
-        if (authData?.users?.[0]?.id) userId = authData.users[0].id
+        const { data: mainProf } = await admin
+          .from('profiles')
+          .select('id')
+          .ilike('email', '%onur%')
+          .maybeSingle()
+        if (mainProf?.id) {
+          userId = mainProf.id
+        } else {
+          const { data: activeBm } = await admin
+            .from('bookmarks')
+            .select('user_id')
+            .not('user_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (activeBm?.user_id) {
+            userId = activeBm.user_id
+          } else {
+            const { data: profiles } = await admin.from('profiles').select('id').limit(1)
+            if (profiles && profiles.length > 0) userId = profiles[0].id
+          }
+        }
       } catch {}
     }
 

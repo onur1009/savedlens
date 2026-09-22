@@ -468,17 +468,30 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Resilient fallback: use registered owner profile or auth.users
+    // 3. Resilient fallback: active library owner
     if (!userId) {
       try {
         const admin = createAdminClient()
-        const { data: profiles } = await admin.from('profiles').select('id').limit(1)
-        if (profiles && profiles.length > 0) {
-          userId = profiles[0].id
+        const { data: mainProf } = await admin
+          .from('profiles')
+          .select('id')
+          .ilike('email', '%onur%')
+          .maybeSingle()
+        if (mainProf?.id) {
+          userId = mainProf.id
         } else {
-          const { data: authData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 })
-          if (authData?.users?.[0]?.id) {
-            userId = authData.users[0].id
+          const { data: activeBm } = await admin
+            .from('bookmarks')
+            .select('user_id')
+            .not('user_id', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (activeBm?.user_id) {
+            userId = activeBm.user_id
+          } else {
+            const { data: profiles } = await admin.from('profiles').select('id').limit(1)
+            if (profiles && profiles.length > 0) userId = profiles[0].id
           }
         }
       } catch {}

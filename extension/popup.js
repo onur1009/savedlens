@@ -125,32 +125,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     toggleArrow.textContent = isOpen ? '▴' : '▾'
   })
 
-  // ── Helper: Fetch known shortcodes from SavedLens API ─────────
+  // ── Helper: Fetch known shortcodes from SavedLens API (with auto server failover) ──
   async function refreshKnownShortcodes(serverUrl, token) {
-    try {
-      const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'x-savedlens-token': token,
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.success && Array.isArray(data.knownShortcodes)) {
-          knownShortcodes = data.knownShortcodes
-          libraryCount = data.count || knownShortcodes.length
-          if (chrome.storage && chrome.storage.local) {
-            chrome.storage.local.set({
-              savedlens_known_shortcodes: knownShortcodes,
-              savedlens_library_count: libraryCount,
-            })
+    const urlsToTry = [serverUrl]
+    if (serverUrl.includes('localhost')) {
+      urlsToTry.push('https://savedlens.vercel.app')
+    } else {
+      urlsToTry.push('http://localhost:3000')
+    }
+
+    for (const url of urlsToTry) {
+      try {
+        const res = await fetch(`${url}/api/v1/sync/instagram`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'x-savedlens-token': token,
+            'Authorization': token ? `Bearer ${token}` : '',
+          },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && Array.isArray(data.knownShortcodes)) {
+            knownShortcodes = data.knownShortcodes
+            libraryCount = data.count || knownShortcodes.length
+            if (chrome.storage && chrome.storage.local) {
+              chrome.storage.local.set({
+                savedlens_server_url: url,
+                savedlens_known_shortcodes: knownShortcodes,
+                savedlens_library_count: libraryCount,
+              })
+            }
+            if (serverInput) serverInput.value = url
+            return true
           }
-          return true
         }
-      }
-    } catch {}
+      } catch {}
+    }
     return false
   }
 
@@ -176,11 +187,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     return false
   }
 
-  // ── Helper: Chunked Upload to Server ──────────────────────────
+  // ── Helper: Chunked Upload to Server (with auto server failover) ──
   async function uploadBookmarksChunked(items, serverUrl, token, onProgressText) {
     const CHUNK_SIZE = 60
     let totalSynced = 0
     const totalChunks = Math.ceil(items.length / CHUNK_SIZE)
+    let activeUrl = serverUrl
 
     for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
       const chunk = items.slice(chunkIdx * CHUNK_SIZE, (chunkIdx + 1) * CHUNK_SIZE)
@@ -189,16 +201,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         onProgressText(`Aktarılıyor: ${chunkIdx + 1}/${totalChunks} paket (%${pct})...`)
       }
 
-      const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-savedlens-token': token,
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-        body: JSON.stringify({ bookmarks: chunk }),
-      })
+      let res
+      try {
+        res = await fetch(`${activeUrl}/api/v1/sync/instagram`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-savedlens-token': token,
+            'Authorization': token ? `Bearer ${token}` : '',
+          },
+          body: JSON.stringify({ bookmarks: chunk }),
+        })
+      } catch (netErr) {
+        // Fallback to alternative server URL if network error
+        const altUrl = activeUrl.includes('localhost') ? 'https://savedlens.vercel.app' : 'http://localhost:3000'
+        try {
+          res = await fetch(`${altUrl}/api/v1/sync/instagram`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-savedlens-token': token,
+              'Authorization': token ? `Bearer ${token}` : '',
+            },
+            body: JSON.stringify({ bookmarks: chunk }),
+          })
+          activeUrl = altUrl
+          if (serverInput) serverInput.value = altUrl
+        } catch {
+          throw new Error(`Sunucuya bağlanılamadı (${activeUrl}): ${netErr.message}`)
+        }
+      }
 
       const data = await res.json()
       if (!res.ok || !data.success) {

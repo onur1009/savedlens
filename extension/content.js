@@ -358,42 +358,34 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
   }
 
   async function autoScrollAndCollect(options = {}, onProgress) {
-    if (isAutoScrolling) {
-      const allCached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
-      return { items: allCached, newItems: allCached, isDeltaHit: false }
-    }
     isAutoScrolling = true
 
     const mode = options.mode || 'delta' // 'delta' (smart incremental) or 'full'
     const knownList = Array.isArray(options.knownShortcodes) ? options.knownShortcodes : []
     const knownSet = new Set(knownList)
-    const consecutiveThreshold = options.consecutiveKnownThreshold || 2
+    const consecutiveThreshold = options.consecutiveKnownThreshold || 3
     const maxRounds = options.maxRounds || 400
 
     let isDeltaHit = false
 
-    // Helper: inspect DOM links & cached items to check if we reached already-saved posts
+    // In full mode, clear cache to ensure completely fresh full harvest
+    if (mode === 'full') {
+      window.__SAVEDLENS_GRID_CACHE__.clear()
+      try {
+        sessionStorage.removeItem('__SAVEDLENS_HARVEST_SNAPSHOT__')
+      } catch {}
+    }
+
+    // Scroll to top first so that newest posts at the top of the grid are rendered
+    if (window.scrollY > 350) {
+      window.scrollTo({ top: 0, behavior: 'instant' })
+      await new Promise((r) => setTimeout(r, 450))
+    }
+
+    // Helper: inspect rendered DOM links in visual order (top-to-bottom)
     function checkKnownBoundary() {
       if (mode !== 'delta' || knownSet.size === 0) return false
 
-      // 1. Check harvested items cache
-      const cached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
-      let cacheStreak = 0
-      for (const it of cached) {
-        const isKnown =
-          (it.external_id && knownSet.has(it.external_id)) ||
-          (it.permalink && knownSet.has(it.permalink))
-        if (isKnown) {
-          cacheStreak++
-          if (cacheStreak >= consecutiveThreshold) {
-            return true
-          }
-        } else {
-          cacheStreak = 0
-        }
-      }
-
-      // 2. Check DOM links in reverse-chronological order
       const links = document.querySelectorAll(
         'main a[href*="/p/"], main a[href*="/reel/"], a[href*="/p/"], a[href*="/reel/"]'
       )
@@ -421,7 +413,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     extractInstagramGridItems()
     let lastCount = window.__SAVEDLENS_GRID_CACHE__.size
 
-    // Check if even top posts are already known (kütüphane tamamen güncel!)
+    // Check if the very top row is already known (kütüphane tamamen güncel!)
     if (checkKnownBoundary()) {
       isDeltaHit = true
       isAutoScrolling = false
