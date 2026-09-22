@@ -326,17 +326,21 @@ export async function POST(request: Request) {
         colMap.set(col.name.toLowerCase().trim(), col.id)
       }
 
-      // 2. Fetch inserted bookmark IDs by permalinks
+      // 2. Fetch inserted bookmark IDs by permalinks in safe chunks of 50 (prevents PostgREST URI Too Long error)
       const permalinks = itemsWithPlan.map((x) => x.row.permalink)
-      const { data: savedBmRows } = await admin
-        .from('bookmarks')
-        .select('id, permalink')
-        .eq('user_id', userId!)
-        .in('permalink', permalinks)
-
       const bmIdMap = new Map<string, string>()
-      for (const b of savedBmRows || []) {
-        bmIdMap.set(b.permalink, b.id)
+
+      for (let i = 0; i < permalinks.length; i += 50) {
+        const pSlice = permalinks.slice(i, i + 50)
+        const { data: savedBmRows } = await admin
+          .from('bookmarks')
+          .select('id, permalink')
+          .eq('user_id', userId!)
+          .in('permalink', pSlice)
+
+        for (const b of savedBmRows || []) {
+          bmIdMap.set(b.permalink, b.id)
+        }
       }
 
       const bcLinks: Array<{ bookmark_id: string; collection_id: string }> = []

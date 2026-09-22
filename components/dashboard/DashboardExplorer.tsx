@@ -18,6 +18,9 @@ import {
   MapPin,
   ShoppingBag,
   BookOpen,
+  AlertCircle,
+  RotateCw,
+  X,
 } from 'lucide-react'
 
 interface CollectionOption {
@@ -48,6 +51,7 @@ export default function DashboardExplorer({
   const [semanticResults, setSemanticResults] = useState<SavedItem[] | null>(null)
   const [isSearchingSemantic, setIsSearchingSemantic] = useState(false)
   const [isBatchCategorizing, setIsBatchCategorizing] = useState(false)
+  const [batchError, setBatchError] = useState<string | null>(null)
   const [batchResult, setBatchResult] = useState<{
     count: number
     message: string
@@ -264,33 +268,59 @@ export default function DashboardExplorer({
   async function handleBatchCategorize() {
     setIsBatchCategorizing(true)
     setBatchResult(null)
+    setBatchError(null)
+
     try {
       const res = await fetch('/api/v1/ai/batch-categorize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ forceAll: true }),
       })
+
       const data = await res.json()
+
       if (res.ok && data.success) {
-        if (Array.isArray(data.updatedItems) && data.updatedItems.length > 0) {
+        // 1. High-speed Patch Map Application (updates cards in-place without redraw overhead)
+        if (data.patchMap && typeof data.patchMap === 'object') {
+          setItems((prev) =>
+            prev.map((item) => {
+              const patch = data.patchMap[item.id]
+              if (!patch) return item
+              return {
+                ...item,
+                category: patch.category || item.category,
+                summary: patch.summary || item.summary,
+                tags: patch.tags || item.tags,
+                collection_id: patch.collection_id || item.collection_id,
+                collection_name: patch.collection_name || item.collection_name,
+                collection_color: patch.collection_color || item.collection_color,
+                status: 'completed',
+              }
+            })
+          )
+        } else if (Array.isArray(data.updatedItems) && data.updatedItems.length > 0) {
           setItems(data.updatedItems)
         }
+
+        // 2. Synchronize collections
         if (Array.isArray(data.collections) && data.collections.length > 0) {
           setCollections(data.collections)
         }
-        // Notify sidebar and all components that collections changed
+
+        // 3. Notify sidebar to instantly refresh collection badges
         window.dispatchEvent(new CustomEvent('collections-updated'))
+
         setBatchResult({
-          count: data.processedCount || 0,
-          message: `${data.processedCount || items.length} içerik etiketlerine ve konularına göre analiz edilip kategorilerine yerleştirildi!`,
+          count: data.processedCount || items.length,
+          message: `${data.processedCount || items.length} içerik akıllı algoritmalarla analiz edildi ve uygun kategorilere/koleksiyonlara yerleştirildi!`,
         })
-        setTimeout(() => setBatchResult(null), 8000)
+        setTimeout(() => setBatchResult(null), 9000)
       } else {
-        alert(data.error || 'Kategorizasyon yapılamadı')
+        setBatchError(data.error || 'Kategorizasyon tamamlanamadı. Lütfen tekrar deneyin.')
       }
     } catch (err) {
       console.error('Batch categorization failed:', err)
-      alert('Kategorizasyon sırasında bir bağlantı hatası oluştu.')
+      setBatchError('Kategorizasyon sırasında sunucuyla bağlantı kurulamadı. Lütfen tekrar deneyin.')
     } finally {
       setIsBatchCategorizing(false)
     }
@@ -386,11 +416,62 @@ export default function DashboardExplorer({
           </div>
         </div>
 
-        {/* Success Feedback Alert */}
-        {batchResult && (
-          <div className="mt-3 p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2 animate-fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="font-semibold">{batchResult.message}</span>
+        {/* In-Progress Loading State Banner */}
+        {isBatchCategorizing && (
+          <div className="mt-3 p-3 rounded-xl bg-purple-950/70 border border-purple-500/40 text-purple-200 text-xs flex items-center justify-between gap-3 animate-pulse shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-400 shrink-0" />
+              <span>
+                Yapay Zeka kütüphanenizdeki {items.length} içeriği tarıyor, metinleri analiz ediyor ve uygun kategorilere yerleştiriyor...
+              </span>
+            </div>
+            <span className="text-[11px] font-mono text-purple-300 font-semibold shrink-0">Lütfen bekleyin</span>
+          </div>
+        )}
+
+        {/* Error Feedback Banner with Retry Button */}
+        {batchError && !isBatchCategorizing && (
+          <div className="mt-3 p-3 rounded-xl bg-red-950/70 border border-red-500/50 text-red-200 text-xs flex items-center justify-between gap-3 animate-fade-in shadow-lg">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span className="truncate">{batchError}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleBatchCategorize}
+                className="px-2.5 py-1 rounded-lg bg-red-800/80 hover:bg-red-700 text-white font-semibold text-[11px] flex items-center gap-1 transition-all"
+              >
+                <RotateCw className="w-3 h-3" />
+                <span>Tekrar Dene</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setBatchError(null)}
+                aria-label="Kapat"
+                className="p-1 rounded-lg hover:bg-white/10 text-red-300 hover:text-white transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Success Celebration Feedback Banner */}
+        {batchResult && !isBatchCategorizing && (
+          <div className="mt-3 p-3 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-200 text-xs flex items-center justify-between gap-3 animate-fade-in shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-semibold">{batchResult.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBatchResult(null)}
+              aria-label="Kapat"
+              className="p-1 rounded-lg hover:bg-white/10 text-emerald-300 hover:text-white transition-colors shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 

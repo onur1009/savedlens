@@ -424,35 +424,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           return
         }
 
-        btnText.textContent = `${items.length} gönderi aktarılıyor...`
+        // Chunk items into batches of 60 for reliable streaming transfer
+        const CHUNK_SIZE = 60
+        let totalSynced = 0
+        const totalChunks = Math.ceil(items.length / CHUNK_SIZE)
 
-        const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-savedlens-token': token,
-            'Authorization': token ? `Bearer ${token}` : '',
-          },
-          body: JSON.stringify({ bookmarks: items }),
-        })
+        for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+          const chunk = items.slice(chunkIdx * CHUNK_SIZE, (chunkIdx + 1) * CHUNK_SIZE)
+          const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100)
+          btnText.textContent = `Aktarılıyor: ${chunkIdx + 1}/${totalChunks} paket (%${pct})...`
 
-        const data = await res.json()
+          const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-savedlens-token': token,
+              'Authorization': token ? `Bearer ${token}` : '',
+            },
+            body: JSON.stringify({ bookmarks: chunk }),
+          })
 
-        if (res.ok && data.success) {
-          const count = data.count || items.length
-          showFeedback(
-            'success',
-            `✓ ${count} adet kaydedilen gönderi SavedLens hesabınıza aktarıldı! 🎉`,
-            `${serverUrl}/dashboard`
-          )
-          btnIcon.textContent = '✓'
-          btnText.textContent = 'Tümü Senkronize Edildi'
-        } else {
-          showFeedback('error', data.error || 'Aktarım sırasında bir hata oluştu.')
-          btnIcon.textContent = originalIcon
-          btnText.textContent = originalText
+          const data = await res.json()
+
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || `Paket ${chunkIdx + 1} aktarılamadı.`)
+          }
+
+          totalSynced += data.count || chunk.length
         }
+
+        showFeedback(
+          'success',
+          `✓ ${totalSynced} adet kaydedilen gönderi SavedLens hesabınıza başarıyla aktarıldı! 🎉`,
+          `${serverUrl}/dashboard`
+        )
+        btnIcon.textContent = '✓'
+        btnText.textContent = 'Tümü Senkronize Edildi'
       } catch (fetchErr) {
         showFeedback('error', `Bağlantı hatası: Sunucuya erişilemedi (${fetchErr.message}).`)
         btnIcon.textContent = originalIcon

@@ -471,9 +471,9 @@ function ItemDetailModalContent({
         </button>
 
         {/* ── Left Column: Media & Platform Showcase ─────────── */}
-        <div className="w-full md:w-5/12 h-[30vh] min-h-[190px] max-h-[35vh] md:h-full md:max-h-none bg-[#0d0d12] flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/10 relative overflow-hidden shrink-0">
+        <div className="w-full md:w-5/12 h-[20vh] sm:h-[26vh] min-h-[140px] sm:min-h-[180px] max-h-[28vh] md:h-full md:max-h-none bg-[#0d0d12] flex flex-col justify-between border-b md:border-b-0 md:border-r border-white/10 relative overflow-hidden shrink-0">
           {showPlayer && shortcode ? (
-            <div className="relative w-full h-full min-h-[190px] md:min-h-full bg-black flex flex-col items-center justify-center">
+            <div className="relative w-full h-full min-h-[140px] sm:min-h-[180px] md:min-h-full bg-black flex flex-col items-center justify-center">
               <iframe
                 src={`https://www.instagram.com/reel/${shortcode}/embed/`}
                 className="w-full h-full border-0"
@@ -491,7 +491,7 @@ function ItemDetailModalContent({
               </button>
             </div>
           ) : item.thumbnail_url && !imageError ? (
-            <div className="relative w-full h-full min-h-[190px] bg-black/60 overflow-hidden group">
+            <div className="relative w-full h-full min-h-[140px] sm:min-h-[180px] bg-black/60 overflow-hidden group">
               <Image
                 src={item.thumbnail_url}
                 alt={cleanTitle}
@@ -554,7 +554,7 @@ function ItemDetailModalContent({
               )}
             </div>
           ) : (
-            <div className="w-full h-full min-h-[190px] p-6 flex flex-col items-center justify-center text-center bg-gradient-to-br from-zinc-900 via-[#161622] to-black">
+            <div className="w-full h-full min-h-[140px] sm:min-h-[180px] p-4 sm:p-6 flex flex-col items-center justify-center text-center bg-gradient-to-br from-zinc-900 via-[#161622] to-black">
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-xl mb-3"
                 style={{ backgroundColor: platformColor }}
@@ -583,7 +583,7 @@ function ItemDetailModalContent({
         </div>
 
         {/* ── Right Column: Categorization, AI & Content ───────── */}
-        <div className="w-full md:w-7/12 flex-1 h-full flex flex-col justify-between overflow-y-auto p-4 sm:p-6 md:p-7 space-y-5 bg-[#121218]">
+        <div className="w-full md:w-7/12 flex-1 h-full flex flex-col justify-between overflow-y-auto p-3.5 sm:p-5 md:p-7 space-y-4 sm:space-y-5 bg-[#121218] scrollbar-thin">
           <div className="space-y-4">
             {/* 1. Header: Author info on left, Star on right (Close button is floating top right) */}
             <div className="flex items-center justify-between gap-4 pb-3 border-b border-white/10 pr-10">

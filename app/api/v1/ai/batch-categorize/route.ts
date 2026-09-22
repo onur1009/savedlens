@@ -3,9 +3,30 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { planSmartCategory } from '@/lib/ai/smart-categorizer'
 import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
-import type { SavedItem } from '@/lib/mock-data'
 
-export const maxDuration = 120 // Allow extended serverless execution for batch AI
+export const maxDuration = 60 // Extended execution for batch processing
+
+interface BookmarkUpdateRow {
+  id: string
+  user_id: string
+  platform: string
+  permalink: string
+  category: string
+  ai_summary: string
+  ai_tags: string[]
+  extractors: Record<string, unknown>
+  status: string
+  updated_at: string
+}
+
+interface PatchData {
+  category: string
+  summary: string
+  tags: string[]
+  collection_id: string | null
+  collection_name: string | null
+  collection_color: string | null
+}
 
 export async function POST(request: Request) {
   try {
@@ -18,10 +39,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    // 1. Fetch user bookmarks
+    // 1. Fetch user bookmarks (lean select)
     const { data: bookmarks, error: fetchErr } = await supabase
       .from('bookmarks')
-      .select('*, bookmark_collections(collection_id, collections(id, name, color))')
+      .select('id, user_id, platform, permalink, caption, author_username, author_name, extractors')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(10000)
@@ -32,10 +53,17 @@ export async function POST(request: Request) {
     }
 
     if (!bookmarks || bookmarks.length === 0) {
-      return NextResponse.json({ success: true, processedCount: 0, updatedItems: [], collections: [] })
+      return NextResponse.json({
+        success: true,
+        processedCount: 0,
+        total: 0,
+        patchMap: {},
+        collections: [],
+        message: 'Kategorize edilecek içerik bulunamadı.',
+      })
     }
 
-    // 2. Fetch or initialize user collections
+    // 2. Fetch existing collections
     const { data: existingCols } = await supabase
       .from('collections')
       .select('id, name, color, icon')
@@ -46,24 +74,26 @@ export async function POST(request: Request) {
       colMap.set(c.name.toLowerCase().trim(), c)
     }
 
-    const updatedItems: SavedItem[] = []
-    let updatedCount = 0
-    const bcToInsert: Array<{ bookmark_id: string; collection_id: string }> = []
+    // 3. In-memory category and collection planning for all bookmarks
+    const missingColsMap = new Map<string, { name: string; color: string; icon: string }>()
+    const plannedBookmarks: Array<{
+      b: (typeof bookmarks)[0]
+      plan: ReturnType<typeof planSmartCategory>
+      cleanTitle: string
+      targetColKey: string
+    }> = []
 
-    // 3. Process bookmarks and determine matching/new collections
     for (const b of bookmarks) {
       const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
       const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
-
-      // Intelligent Tag & Category Planning
       const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username)
-
-      // Check if matching collection exists for this user
       const targetColKey = plan.collectionName.toLowerCase().trim()
-      let colRecord = colMap.get(targetColKey)
 
+      plannedBookmarks.push({ b, plan, cleanTitle, targetColKey })
+
+      // Check if collection exists
+      let colRecord = colMap.get(targetColKey)
       if (!colRecord) {
-        // Also check by partial match
         for (const [key, val] of colMap.entries()) {
           if (key.includes(targetColKey) || targetColKey.includes(key)) {
             colRecord = val
@@ -72,35 +102,68 @@ export async function POST(request: Request) {
         }
       }
 
-      // If no matching collection, dynamically CREATE a new category/collection for this user!
-      if (!colRecord) {
-        const { data: newCol, error: colErr } = await supabase
-          .from('collections')
-          .insert({
-            user_id: user.id,
-            name: plan.collectionName,
-            color: plan.collectionColor,
-            icon: plan.collectionIcon,
-          })
-          .select('id, name, color, icon')
-          .maybeSingle()
+      if (!colRecord && !missingColsMap.has(targetColKey)) {
+        missingColsMap.set(targetColKey, {
+          name: plan.collectionName,
+          color: plan.collectionColor,
+          icon: plan.collectionIcon,
+        })
+      }
+    }
 
-        if (newCol) {
-          colRecord = newCol
-          colMap.set(targetColKey, newCol)
-        } else {
-          console.warn('[batch-categorize] Could not create collection:', colErr?.message)
+    // 4. Batch create any missing collections
+    if (missingColsMap.size > 0) {
+      const toInsert = Array.from(missingColsMap.values()).map((c) => ({
+        user_id: user.id,
+        name: c.name,
+        color: c.color,
+        icon: c.icon,
+      }))
+
+      const { data: createdCols, error: colCreateErr } = await supabase
+        .from('collections')
+        .insert(toInsert)
+        .select('id, name, color, icon')
+
+      if (colCreateErr) {
+        console.warn('[batch-categorize] Batch collection creation warning:', colCreateErr.message)
+      } else if (createdCols) {
+        for (const c of createdCols) {
+          colMap.set(c.name.toLowerCase().trim(), c)
+        }
+      }
+    }
+
+    // 5. Build bookmark updates, relationships, and lightweight patch map
+    const bookmarkUpdates: BookmarkUpdateRow[] = []
+    const bcToInsertMap = new Map<string, { bookmark_id: string; collection_id: string }>()
+    const patchMap: Record<string, PatchData> = {}
+    const nowIso = new Date().toISOString()
+
+    for (const { b, plan, targetColKey } of plannedBookmarks) {
+      let colRecord = colMap.get(targetColKey)
+      if (!colRecord) {
+        for (const [key, val] of colMap.entries()) {
+          if (key.includes(targetColKey) || targetColKey.includes(key)) {
+            colRecord = val
+            break
+          }
         }
       }
 
       if (colRecord) {
-        bcToInsert.push({
+        const linkKey = `${b.id}:${colRecord.id}`
+        bcToInsertMap.set(linkKey, {
           bookmark_id: b.id,
           collection_id: colRecord.id,
         })
       }
 
-      const updatePayload = {
+      bookmarkUpdates.push({
+        id: b.id,
+        user_id: b.user_id,
+        platform: b.platform || 'web',
+        permalink: b.permalink,
         category: plan.category,
         ai_summary: plan.summary,
         ai_tags: plan.tags,
@@ -109,56 +172,63 @@ export async function POST(request: Request) {
           ...plan.extractors,
         },
         status: 'completed',
-        updated_at: new Date().toISOString(),
-      }
+        updated_at: nowIso,
+      })
 
-      const { error: updateErr } = await supabase
-        .from('bookmarks')
-        .update(updatePayload)
-        .eq('id', b.id)
-
-      if (!updateErr) {
-        updatedCount++
-      }
-
-      updatedItems.push({
-        id: b.id,
-        url: b.permalink,
-        platform: b.platform,
-        title: cleanTitle,
-        description: b.caption,
-        thumbnail_url: (b.stored_media_urls && b.stored_media_urls[0]) || (b.media_urls && b.media_urls[0]) || null,
+      patchMap[b.id] = {
+        category: plan.category,
         summary: plan.summary,
         tags: plan.tags,
-        extractors: updatePayload.extractors,
-        starred: b.is_favorite ?? false,
-        created_at: b.created_at,
-        author_username: realAuthor.username,
-        author_avatar: b.author_avatar || undefined,
-        media_type: b.media_type || undefined,
-        stored_media_urls: b.stored_media_urls || [],
         collection_id: colRecord?.id || null,
         collection_name: colRecord?.name || null,
         collection_color: colRecord?.color || null,
-        status: 'completed',
-        error_message: null,
-        transcript: b.transcript || null,
-        category: plan.category,
-        actionable_data: b.actionable_data || null,
-      })
-    }
-
-    // 4. Batch upsert bookmark_collections relationships
-    if (bcToInsert.length > 0) {
-      for (let i = 0; i < bcToInsert.length; i += 50) {
-        const chunk = bcToInsert.slice(i, i + 50)
-        await supabase
-          .from('bookmark_collections')
-          .upsert(chunk, { onConflict: 'bookmark_id,collection_id' })
       }
     }
 
-    // 5. Fetch finalized collections list
+    // 6. High-speed Chunked Batch Upsert for bookmarks (80 per chunk, concurrency: 3)
+    const CHUNK_SIZE = 80
+    const bookmarkChunks: BookmarkUpdateRow[][] = []
+    for (let i = 0; i < bookmarkUpdates.length; i += CHUNK_SIZE) {
+      bookmarkChunks.push(bookmarkUpdates.slice(i, i + CHUNK_SIZE))
+    }
+
+    const CONCURRENCY = 3
+    for (let i = 0; i < bookmarkChunks.length; i += CONCURRENCY) {
+      const slice = bookmarkChunks.slice(i, i + CONCURRENCY)
+      await Promise.all(
+        slice.map(async (chunk) => {
+          const { error } = await supabase
+            .from('bookmarks')
+            .upsert(chunk, { onConflict: 'id' })
+          if (error) {
+            console.warn('[batch-categorize] Bookmark batch upsert chunk error:', error.message)
+          }
+        })
+      )
+    }
+
+    // 7. High-speed Chunked Batch Upsert for bookmark_collections
+    const bcList = Array.from(bcToInsertMap.values())
+    const bcChunks: Array<typeof bcList> = []
+    for (let i = 0; i < bcList.length; i += CHUNK_SIZE) {
+      bcChunks.push(bcList.slice(i, i + CHUNK_SIZE))
+    }
+
+    for (let i = 0; i < bcChunks.length; i += CONCURRENCY) {
+      const slice = bcChunks.slice(i, i + CONCURRENCY)
+      await Promise.all(
+        slice.map(async (chunk) => {
+          const { error } = await supabase
+            .from('bookmark_collections')
+            .upsert(chunk, { onConflict: 'bookmark_id,collection_id' })
+          if (error) {
+            console.warn('[batch-categorize] Collection link batch upsert chunk error:', error.message)
+          }
+        })
+      )
+    }
+
+    // 8. Fetch finalized collections list with counts
     const { data: finalCols } = await supabase
       .from('collections')
       .select('*, bookmark_collections(count)')
@@ -183,11 +253,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      processedCount: updatedCount,
+      processedCount: bookmarkUpdates.length,
       total: bookmarks.length,
-      updatedItems,
+      patchMap,
       collections: formattedCollections,
-      message: `${updatedCount} içerik başarıyla analiz edildi ve uygun kategorilere/koleksiyonlara atandı.`,
+      message: `${bookmarkUpdates.length} içerik başarıyla analiz edildi ve akıllı kategorilerine yerleştirildi.`,
     })
   } catch (err) {
     console.error('[batch-categorize] Unexpected error:', err)
