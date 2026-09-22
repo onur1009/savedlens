@@ -1,7 +1,7 @@
 /**
- * SavedLens Chrome Extension (Manifest V3) — v2.5
- * Smart Single-Post vs Bulk Saved Collection Controller
- * Automatically distinguishes between viewing a single post vs all saved posts.
+ * SavedLens Chrome Extension (Manifest V3) — v3.0
+ * Smart Incremental Delta Sync Controller
+ * Automatically distinguishes between single posts, new unsynced posts, and full archives.
  */
 
 const DEFAULT_SERVER = 'https://savedlens.vercel.app'
@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnText = document.getElementById('btn-text')
   const btnAutoscroll = document.getElementById('btn-autoscroll-action')
   const autoscrollText = document.getElementById('autoscroll-text')
+  const syncModeHint = document.getElementById('sync-mode-hint')
   const feedbackCard = document.getElementById('feedback-card')
   const feedbackIcon = document.getElementById('feedback-icon')
   const feedbackText = document.getElementById('feedback-text')
@@ -32,8 +33,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentMode = 'general' // 'single_post' | 'saved_collection' | 'general' | 'system'
   let singlePostData = null
-  let savedCollectionItems = []
   let activeTab = null
+  let knownShortcodes = []
+  let libraryCount = 0
 
   function showFeedback(type, text, linkUrl = null, linkText = 'Kütüphanede Gör ↗') {
     feedbackCard.className = `feedback-card ${type}`
@@ -54,24 +56,34 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── 1. Settings & Storage Management ──────────────────────────
   if (chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(['savedlens_server_url', 'savedlens_sync_token'], (res) => {
-      if (res.savedlens_server_url) {
-        serverInput.value = res.savedlens_server_url
-        updateDashboardLink(res.savedlens_server_url)
-        if (res.savedlens_server_url.includes('localhost')) {
-          pillLocal?.classList.add('active')
-          pillProd?.classList.remove('active')
+    chrome.storage.local.get(
+      ['savedlens_server_url', 'savedlens_sync_token', 'savedlens_known_shortcodes', 'savedlens_library_count'],
+      (res) => {
+        if (res.savedlens_server_url) {
+          serverInput.value = res.savedlens_server_url
+          updateDashboardLink(res.savedlens_server_url)
+          if (res.savedlens_server_url.includes('localhost')) {
+            pillLocal?.classList.add('active')
+            pillProd?.classList.remove('active')
+          }
         }
-      }
 
-      if (res.savedlens_sync_token) {
-        tokenInput.value = res.savedlens_sync_token
-        if (tokenStatus) {
-          tokenStatus.textContent = 'Token Kayıtlı ✓'
-          tokenStatus.style.color = 'var(--success)'
+        if (res.savedlens_sync_token) {
+          tokenInput.value = res.savedlens_sync_token
+          if (tokenStatus) {
+            tokenStatus.textContent = 'Token Kayıtlı ✓'
+            tokenStatus.style.color = 'var(--success)'
+          }
+        }
+
+        if (Array.isArray(res.savedlens_known_shortcodes)) {
+          knownShortcodes = res.savedlens_known_shortcodes
+        }
+        if (typeof res.savedlens_library_count === 'number') {
+          libraryCount = res.savedlens_library_count
         }
       }
-    })
+    )
   }
 
   function saveConfig() {
@@ -109,6 +121,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     toggleArrow.textContent = isOpen ? '▴' : '▾'
   })
 
+  // ── Helper: Fetch known shortcodes from SavedLens API ─────────
+  async function refreshKnownShortcodes(serverUrl, token) {
+    try {
+      const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'x-savedlens-token': token,
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.success && Array.isArray(data.knownShortcodes)) {
+          knownShortcodes = data.knownShortcodes
+          libraryCount = data.count || knownShortcodes.length
+          if (chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({
+              savedlens_known_shortcodes: knownShortcodes,
+              savedlens_library_count: libraryCount,
+            })
+          }
+          return true
+        }
+      }
+    } catch {}
+    return false
+  }
+
   // ── Helper: Inject Content Script if needed ───────────────────
   async function ensureContentScript(tabId) {
     try {
@@ -131,6 +172,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     return false
   }
 
+  // ── Helper: Chunked Upload to Server ──────────────────────────
+  async function uploadBookmarksChunked(items, serverUrl, token, onProgressText) {
+    const CHUNK_SIZE = 60
+    let totalSynced = 0
+    const totalChunks = Math.ceil(items.length / CHUNK_SIZE)
+
+    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+      const chunk = items.slice(chunkIdx * CHUNK_SIZE, (chunkIdx + 1) * CHUNK_SIZE)
+      const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100)
+      if (onProgressText) {
+        onProgressText(`Aktarılıyor: ${chunkIdx + 1}/${totalChunks} paket (%${pct})...`)
+      }
+
+      const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-savedlens-token': token,
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        body: JSON.stringify({ bookmarks: chunk }),
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Paket ${chunkIdx + 1} aktarılamadı.`)
+      }
+      totalSynced += data.count || chunk.length
+    }
+
+    // Add newly uploaded shortcodes to local cache
+    for (const it of items) {
+      if (it.external_id) knownShortcodes.push(it.external_id)
+      if (it.permalink) knownShortcodes.push(it.permalink)
+    }
+    libraryCount += totalSynced
+
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.set({
+        savedlens_known_shortcodes: knownShortcodes,
+        savedlens_library_count: libraryCount,
+      })
+    }
+
+    return totalSynced
+  }
+
   // ── 2. Tab Inspection & Smart State Resolution ────────────────
   try {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true })
@@ -144,6 +233,54 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentUrl.startsWith('edge://') ||
     currentUrl.startsWith('about:') ||
     currentUrl.startsWith('chrome-extension://')
+
+  const initialServerUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
+  const initialToken = tokenInput.value.trim()
+
+  // Proactively fetch library status from server
+  refreshKnownShortcodes(initialServerUrl, initialToken).then(() => {
+    if (currentMode === 'saved_collection') {
+      applySavedCollectionUI()
+    }
+  })
+
+  function applySavedCollectionUI() {
+    currentMode = 'saved_collection'
+    if (libraryCount > 0) {
+      statusEl.textContent = `📥 ${libraryCount} Arşivde`
+      statusEl.className = 'status-badge active'
+      contextIcon.textContent = '⚡'
+      contextTitle.textContent = 'Instagram Kaydedilenler'
+      contextSub.textContent = `Kütüphanenizde ${libraryCount} gönderi var. Akıllı tarama sadece yeni eklediklerinizi çeker.`
+
+      btnIcon.textContent = '⚡'
+      btnText.textContent = 'Yeni Gönderileri Tara (Akıllı)'
+
+      if (btnAutoscroll) {
+        btnAutoscroll.style.display = 'flex'
+        autoscrollText.textContent = '🔄 Tüm Kütüphaneyi Yeniden Tara (Tam)'
+      }
+      if (syncModeHint) {
+        syncModeHint.style.display = 'block'
+      }
+    } else {
+      statusEl.textContent = '📥 İlk Kurulum'
+      statusEl.className = 'status-badge'
+      contextIcon.textContent = '📥'
+      contextTitle.textContent = 'Instagram Kaydedilenler'
+      contextSub.textContent = 'Kütüphanenizi oluşturmak için tüm kaydedilmiş gönderileriniz taranıp aktarılacak.'
+
+      btnIcon.textContent = '📥'
+      btnText.textContent = 'Tümünü Tara & Kütüphaneme Aktar'
+
+      if (btnAutoscroll) {
+        btnAutoscroll.style.display = 'none'
+      }
+      if (syncModeHint) {
+        syncModeHint.style.display = 'none'
+      }
+    }
+  }
 
   if (isSystemPage) {
     currentMode = 'system'
@@ -160,7 +297,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     chrome.tabs.sendMessage(activeTab.id, { action: 'INSPECT_PAGE_STATE' }, (resp) => {
       if (chrome.runtime.lastError || !resp || !resp.success || !resp.state) {
-        // Fallback using URL
         fallbackUrlResolution(currentUrl)
         return
       }
@@ -187,30 +323,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnIcon.textContent = '✨'
         btnText.textContent = 'Bu Gönderiyi Kaydet'
         if (btnAutoscroll) btnAutoscroll.style.display = 'none'
+        if (syncModeHint) syncModeHint.style.display = 'none'
       }
       // ── Scenario B: Saved Collection Grid (All Posts)
       else if (state.type === 'saved_collection') {
-        currentMode = 'saved_collection'
-        savedCollectionItems = state.items || []
-        const count = state.count || 0
-
-        statusEl.textContent = `📥 Kaydedilenler (${count})`
-        statusEl.className = 'status-badge active'
-        contextIcon.textContent = '📥'
-        contextTitle.textContent = 'Instagram Kaydedilenler'
-        contextSub.textContent =
-          count > 0
-            ? `Sayfada şu an ${count} adet kaydedilmiş gönderi bulundu.`
-            : 'Sayfayı aşağı kaydırarak veya otomatik tarama butonunu kullanarak gönderileri toplayın.'
-
-        btnIcon.textContent = '⚡'
-        btnText.textContent = count > 0 ? `Tümünü Kaydet (${count} Gönderi)` : 'Kaydedilenleri Aktar'
-
-        // Show auto-scroll helper
-        if (btnAutoscroll) {
-          btnAutoscroll.style.display = 'flex'
-          autoscrollText.textContent = '📜 Aşağı Kaydır & Hepsini Tara'
-        }
+        applySavedCollectionUI()
       } else {
         fallbackUrlResolution(currentUrl)
       }
@@ -235,15 +352,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function fallbackUrlResolution(url) {
     if (url.includes('/saved')) {
-      currentMode = 'saved_collection'
-      statusEl.textContent = '📥 Instagram Kaydedilenler'
-      statusEl.className = 'status-badge active'
-      contextIcon.textContent = '📥'
-      contextTitle.textContent = 'Instagram Kaydedilenler'
-      contextSub.textContent = 'Açık olan sayfadaki tüm kaydedilmiş gönderiler kütüphanenize aktarılacak.'
-      btnIcon.textContent = '⚡'
-      btnText.textContent = 'Kaydedilenleri Kütüphaneme Aktar'
-      if (btnAutoscroll) btnAutoscroll.style.display = 'flex'
+      applySavedCollectionUI()
     } else {
       currentMode = 'single_post'
       statusEl.textContent = '📸 Instagram Gönderisi'
@@ -254,20 +363,23 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnIcon.textContent = '✨'
       btnText.textContent = 'Bu Gönderiyi Kaydet'
       if (btnAutoscroll) btnAutoscroll.style.display = 'none'
+      if (syncModeHint) syncModeHint.style.display = 'none'
     }
   }
 
-  // ── 3. Auto-Scroll Helper Button Handler (With Stop Capability) ──
+  // ── 3. Explicit Full Scan Button Handler ("Tüm Kütüphaneyi Yeniden Tara") ──
   let isScanningInProgress = false
 
   btnAutoscroll?.addEventListener('click', async () => {
     if (isScanningInProgress) {
-      // User clicked while scanning -> Stop and harvest immediately
       autoscrollText.textContent = '⏹ Durduruluyor...'
       btnAutoscroll.disabled = true
       chrome.tabs.sendMessage(activeTab.id, { action: 'STOP_AUTO_SCROLL' })
       return
     }
+
+    const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
+    const token = tokenInput.value.trim()
 
     isScanningInProgress = true
     btnAutoscroll.disabled = false
@@ -275,37 +387,58 @@ document.addEventListener('DOMContentLoaded', async () => {
     hideFeedback()
     autoscrollText.textContent = '⏹ Taramayı Durdur (Tıkla)'
 
-    // Listen for live progress from content script
     const progressListener = (msg) => {
       if (msg.action === 'SCROLL_PROGRESS') {
         autoscrollText.textContent = `⏹ Durdur (${msg.count} gönderi)...`
         statusEl.textContent = `📥 ${msg.count} Gönderi`
-        btnText.textContent = `Tümünü Kaydet (${msg.count} Gönderi)`
       }
     }
     chrome.runtime.onMessage.addListener(progressListener)
 
     try {
-      chrome.tabs.sendMessage(activeTab.id, { action: 'AUTO_SCROLL_AND_EXTRACT' }, (resp) => {
-        isScanningInProgress = false
-        chrome.runtime.onMessage.removeListener(progressListener)
-        btnAutoscroll.disabled = false
-        btnMain.disabled = false
+      // Force FULL scan mode
+      chrome.tabs.sendMessage(
+        activeTab.id,
+        { action: 'AUTO_SCROLL_AND_EXTRACT', options: { mode: 'full' } },
+        async (resp) => {
+          isScanningInProgress = false
+          chrome.runtime.onMessage.removeListener(progressListener)
+          btnAutoscroll.disabled = false
+          btnMain.disabled = false
 
-        if (chrome.runtime.lastError || !resp || !resp.success) {
-          autoscrollText.textContent = '📜 Tekrar Dene'
-          showFeedback('error', 'Otomatik kaydırma tamamlanamadı.')
-          return
+          if (chrome.runtime.lastError || !resp || !resp.success) {
+            autoscrollText.textContent = '🔄 Tam Tarama Başarısız'
+            showFeedback('error', 'Tam tarama tamamlanamadı.')
+            return
+          }
+
+          const items = resp.items || []
+          autoscrollText.textContent = `✓ ${items.length} Gönderi Toplandı`
+          statusEl.textContent = `📥 ${items.length} Gönderi`
+
+          if (items.length === 0) {
+            showFeedback('info', 'Sayfada kaydedilmiş gönderi bulunamadı.')
+            return
+          }
+
+          try {
+            btnMain.disabled = true
+            btnAutoscroll.disabled = true
+            btnText.textContent = 'Kütüphaneye aktarılıyor...'
+            const synced = await uploadBookmarksChunked(items, serverUrl, token, (msg) => {
+              btnText.textContent = msg
+            })
+            showFeedback('success', `✓ Toplam ${synced} gönderi kütüphanenize eşitlendi! 🎉`, `${serverUrl}/dashboard`)
+            btnIcon.textContent = '✓'
+            btnText.textContent = 'Tam Senkronize Edildi'
+          } catch (uploadErr) {
+            showFeedback('error', `Aktarım hatası: ${uploadErr.message}`)
+          } finally {
+            btnMain.disabled = false
+            btnAutoscroll.disabled = false
+          }
         }
-
-        savedCollectionItems = resp.items || []
-        const count = resp.count || savedCollectionItems.length
-        autoscrollText.textContent = `✓ ${count} Gönderi Toplandı`
-        statusEl.textContent = `📥 ${count} Gönderi`
-        contextSub.textContent = `Sayfadaki tüm ${count} adet kaydedilmiş gönderi toplandı. Şimdi tek tıkla kütüphanenize aktarabilirsiniz!`
-        btnIcon.textContent = '⚡'
-        btnText.textContent = `Tümünü Kaydet (${count} Gönderi)`
-      })
+      )
     } catch {
       isScanningInProgress = false
       chrome.runtime.onMessage.removeListener(progressListener)
@@ -314,7 +447,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // ── 4. Main Action Button Handler ─────────────────────────────
+  // ── 4. Main Action Button Handler (Smart Delta Sync / Single Post) ──
   btnMain.addEventListener('click', async () => {
     const serverUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
     const token = tokenInput.value.trim()
@@ -335,14 +468,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnIcon.innerHTML = '<div class="spinner"></div>'
     btnText.textContent = 'İşleniyor...'
 
-    // ── Mode: Single Instagram Post (Direct or in Modal Dialog) ──
+    // ── Mode A: Single Instagram Post ──
     if (currentMode === 'single_post') {
       try {
         btnText.textContent = 'Gönderi kaydediliyor...'
         let postPayload = singlePostData
 
         if (!postPayload) {
-          // Fallback fetch from content script
           const metaRes = await new Promise((resolve) => {
             chrome.tabs.sendMessage(activeTab.id, { action: 'GET_PAGE_METADATA' }, (resp) => {
               if (chrome.runtime.lastError || !resp || !resp.data) resolve(null)
@@ -396,71 +528,93 @@ document.addEventListener('DOMContentLoaded', async () => {
       return
     }
 
-    // ── Mode: Batch Instagram Saved Collection Sync ──────────────
+    // ── Mode B: Smart Incremental Delta Sync (Instagram Saved Collection) ──
     if (currentMode === 'saved_collection') {
       try {
-        btnText.textContent = 'Gönderiler taranıyor...'
+        const isDeltaMode = libraryCount > 0
 
-        let items = savedCollectionItems
-        if (!items || items.length === 0) {
-          const extractResp = await new Promise((resolve) => {
-            chrome.tabs.sendMessage(activeTab.id, { action: 'EXTRACT_SAVED_POSTS' }, (resp) => {
-              if (chrome.runtime.lastError || !resp) resolve(null)
-              else resolve(resp)
-            })
-          })
-          items = extractResp?.items || []
+        btnText.textContent = isDeltaMode ? '⚡ Yeni gönderiler taranıyor...' : 'Tüm gönderiler taranıyor...'
+
+        // Listen for live progress
+        const progressListener = (msg) => {
+          if (msg.action === 'SCROLL_PROGRESS') {
+            if (isDeltaMode && typeof msg.newCount === 'number') {
+              btnText.textContent = `⚡ Taranıyor (${msg.newCount} yeni)...`
+            } else {
+              btnText.textContent = `Taranıyor (${msg.count})...`
+            }
+          }
+        }
+        chrome.runtime.onMessage.addListener(progressListener)
+
+        const scanOptions = {
+          mode: isDeltaMode ? 'delta' : 'full',
+          knownShortcodes,
+          consecutiveKnownThreshold: 3,
         }
 
-        if (items.length === 0) {
-          showFeedback(
-            'info',
-            'Sayfada kayıtlı gönderi bulunamadı. Lütfen sayfayı aşağı kaydırıp veya "Aşağı Kaydır" butonuna basıp tekrar deneyin.'
+        const scanResp = await new Promise((resolve) => {
+          chrome.tabs.sendMessage(
+            activeTab.id,
+            { action: 'AUTO_SCROLL_AND_EXTRACT', options: scanOptions },
+            (resp) => {
+              chrome.runtime.onMessage.removeListener(progressListener)
+              if (chrome.runtime.lastError || !resp) resolve(null)
+              else resolve(resp)
+            }
           )
-          btnMain.disabled = false
-          if (btnAutoscroll) btnAutoscroll.disabled = false
+        })
+
+        if (!scanResp || !scanResp.success) {
+          showFeedback('error', 'Sayfa taranırken bir hata oluştu. Lütfen tekrar deneyin.')
           btnIcon.textContent = originalIcon
           btnText.textContent = originalText
+          btnMain.disabled = false
+          if (btnAutoscroll) btnAutoscroll.disabled = false
           return
         }
 
-        // Chunk items into batches of 60 for reliable streaming transfer
-        const CHUNK_SIZE = 60
-        let totalSynced = 0
-        const totalChunks = Math.ceil(items.length / CHUNK_SIZE)
+        // Determine which items to send
+        const itemsToSync = isDeltaMode && Array.isArray(scanResp.newItems)
+          ? scanResp.newItems
+          : scanResp.items || []
 
-        for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
-          const chunk = items.slice(chunkIdx * CHUNK_SIZE, (chunkIdx + 1) * CHUNK_SIZE)
-          const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100)
-          btnText.textContent = `Aktarılıyor: ${chunkIdx + 1}/${totalChunks} paket (%${pct})...`
-
-          const res = await fetch(`${serverUrl}/api/v1/sync/instagram`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-savedlens-token': token,
-              'Authorization': token ? `Bearer ${token}` : '',
-            },
-            body: JSON.stringify({ bookmarks: chunk }),
-          })
-
-          const data = await res.json()
-
-          if (!res.ok || !data.success) {
-            throw new Error(data.error || `Paket ${chunkIdx + 1} aktarılamadı.`)
-          }
-
-          totalSynced += data.count || chunk.length
+        // If in delta mode and NO new items found:
+        if (isDeltaMode && itemsToSync.length === 0) {
+          showFeedback(
+            'info',
+            `✓ Kütüphaneniz zaten tamamen güncel! Yeni kaydedilen bir gönderi bulunamadı. ✨`,
+            `${serverUrl}/dashboard`
+          )
+          btnIcon.textContent = '✓'
+          btnText.textContent = 'Kütüphane Güncel ✓'
+          btnMain.disabled = false
+          if (btnAutoscroll) btnAutoscroll.disabled = false
+          return
         }
+
+        if (itemsToSync.length === 0) {
+          showFeedback('info', 'Sayfada kaydedilmiş gönderi bulunamadı.')
+          btnIcon.textContent = originalIcon
+          btnText.textContent = originalText
+          btnMain.disabled = false
+          if (btnAutoscroll) btnAutoscroll.disabled = false
+          return
+        }
+
+        btnText.textContent = `${itemsToSync.length} gönderi aktarılıyor...`
+
+        const totalSynced = await uploadBookmarksChunked(itemsToSync, serverUrl, token, (msg) => {
+          btnText.textContent = msg
+        })
 
         showFeedback(
           'success',
-          `✓ ${totalSynced} adet kaydedilen gönderi SavedLens hesabınıza başarıyla aktarıldı! 🎉`,
+          `✓ ${totalSynced} adet yeni gönderi SavedLens hesabınıza başarıyla aktarıldı! 🎉`,
           `${serverUrl}/dashboard`
         )
         btnIcon.textContent = '✓'
-        btnText.textContent = 'Tümü Senkronize Edildi'
+        btnText.textContent = 'Senkronizasyon Tamamlandı'
       } catch (fetchErr) {
         showFeedback('error', `Bağlantı hatası: Sunucuya erişilemedi (${fetchErr.message}).`)
         btnIcon.textContent = originalIcon
@@ -472,7 +626,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return
     }
 
-    // ── Mode: General Web Page Ingestion ────────────────────────
+    // ── Mode C: General Web Page Ingestion ────────────────────────
     try {
       btnText.textContent = 'Sayfa taranıyor...'
       let payload = {

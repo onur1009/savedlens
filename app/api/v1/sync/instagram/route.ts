@@ -41,6 +41,115 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: CORS_HEADERS })
 }
 
+export async function GET(request: Request) {
+  try {
+    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    let userId: string | null = null
+
+    // 1. Check Bearer / Token header (Extension or API calls)
+    const authHeader = request.headers.get('authorization') || request.headers.get('x-savedlens-token')
+    if (authHeader) {
+      const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+      if (token && token !== 'demo-user-token-offline') {
+        if (UUID_REGEX.test(token)) {
+          userId = token
+        } else {
+          try {
+            const { createAdminClient } = await import('@/lib/supabase/admin')
+            const admin = createAdminClient()
+            const { data: profile } = await admin.from('profiles').select('id').eq('id', token).single()
+            if (profile?.id) userId = profile.id
+          } catch {}
+        }
+      }
+    }
+
+    // 2. Check session cookies
+    if (!userId) {
+      try {
+        const { createClient } = await import('@/lib/supabase/server')
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) userId = user.id
+      } catch {}
+    }
+
+    // 3. Fallback to first profile
+    if (!userId) {
+      try {
+        const { createAdminClient } = await import('@/lib/supabase/admin')
+        const admin = createAdminClient()
+        const { data: profiles } = await admin.from('profiles').select('id').limit(1)
+        if (profiles && profiles.length > 0) userId = profiles[0].id
+      } catch {}
+    }
+
+    if (!userId) {
+      return NextResponse.json({
+        success: true,
+        count: 0,
+        knownShortcodes: [],
+        latestSavedAt: null,
+        latestShortcode: null,
+      }, { headers: CORS_HEADERS })
+    }
+
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const admin = createAdminClient()
+
+    // Fetch existing bookmarks for this user
+    const { data: bms, error } = await admin
+      .from('bookmarks')
+      .select('external_id, permalink, created_at, saved_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10000)
+
+    if (error) {
+      console.error('[sync/instagram GET] Error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500, headers: CORS_HEADERS })
+    }
+
+    const shortcodesSet = new Set<string>()
+    let latestSavedAt: string | null = null
+    let latestShortcode: string | null = null
+
+    for (const b of bms || []) {
+      if (!latestSavedAt && (b.saved_at || b.created_at)) {
+        latestSavedAt = b.saved_at || b.created_at
+      }
+
+      if (b.external_id && b.external_id.length >= 3 && !b.external_id.startsWith('ig_')) {
+        shortcodesSet.add(b.external_id)
+        if (!latestShortcode) latestShortcode = b.external_id
+      }
+
+      if (b.permalink) {
+        const match = b.permalink.match(/\/(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/)
+        if (match && match[2]) {
+          shortcodesSet.add(match[2])
+          if (!latestShortcode) latestShortcode = match[2]
+        }
+        shortcodesSet.add(b.permalink)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      count: (bms || []).length,
+      knownShortcodes: Array.from(shortcodesSet),
+      latestSavedAt,
+      latestShortcode,
+    }, { headers: CORS_HEADERS })
+  } catch (err) {
+    console.error('[sync/instagram GET] Unexpected error:', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Sunucu hatası' },
+      { status: 500, headers: CORS_HEADERS }
+    )
+  }
+}
+
 interface BookmarkDbRow {
   user_id: string
   platform: string

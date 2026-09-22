@@ -357,15 +357,75 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     }
   }
 
-  async function autoScrollAndCollect(maxRounds = 400, onProgress) {
-    if (isAutoScrolling) return Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+  async function autoScrollAndCollect(options = {}, onProgress) {
+    if (isAutoScrolling) {
+      const allCached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+      return { items: allCached, newItems: allCached, isDeltaHit: false }
+    }
     isAutoScrolling = true
+
+    const mode = options.mode || 'delta' // 'delta' (smart incremental) or 'full'
+    const knownList = Array.isArray(options.knownShortcodes) ? options.knownShortcodes : []
+    const knownSet = new Set(knownList)
+    const consecutiveThreshold = options.consecutiveKnownThreshold || 3
+    const maxRounds = options.maxRounds || 400
+
+    let isDeltaHit = false
+
+    // Helper: inspect DOM links in reverse-chronological order to check if we reached already-saved posts
+    function checkKnownBoundary() {
+      if (mode !== 'delta' || knownSet.size === 0) return false
+
+      const links = document.querySelectorAll(
+        'main a[href*="/p/"], main a[href*="/reel/"], a[href*="/p/"], a[href*="/reel/"]'
+      )
+
+      let streak = 0
+      for (const a of links) {
+        if (a.closest('header') || a.closest('nav') || a.closest('footer')) continue
+        const parsed = parseInstagramLink(a.getAttribute('href') || a.href)
+        if (!parsed) continue
+
+        const isKnown = knownSet.has(parsed.shortcode) || knownSet.has(parsed.url)
+        if (isKnown) {
+          streak++
+          if (streak >= consecutiveThreshold) {
+            return true
+          }
+        } else {
+          streak = 0
+        }
+      }
+      return false
+    }
 
     // Initial immediate harvest
     extractInstagramGridItems()
     let lastCount = window.__SAVEDLENS_GRID_CACHE__.size
-    if (onProgress) onProgress(lastCount)
-    updateFloatingScanner(lastCount, 'Taranıyor...')
+
+    // Check if even top posts are already known (kütüphane tamamen güncel!)
+    if (checkKnownBoundary()) {
+      isDeltaHit = true
+      isAutoScrolling = false
+      const allCached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+      const newItems = allCached.filter(
+        (it) => !knownSet.has(it.external_id) && !knownSet.has(it.permalink)
+      )
+      if (onProgress) onProgress(allCached.length, newItems.length)
+      updateFloatingScanner(newItems.length, '⚡ Kütüphaneniz zaten güncel ✓')
+      hideFloatingScanner()
+      return { items: allCached, newItems, isDeltaHit: true }
+    }
+
+    if (onProgress) {
+      const allCached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+      const newCount = knownSet.size > 0
+        ? allCached.filter((it) => !knownSet.has(it.external_id) && !knownSet.has(it.permalink)).length
+        : allCached.length
+      onProgress(allCached.length, newCount)
+    }
+
+    updateFloatingScanner(lastCount, mode === 'delta' ? '⚡ Yeni gönderiler taranıyor...' : 'Taranıyor...')
 
     let consecutiveIdleCycles = 0
     const scrollStep = Math.max(650, Math.floor(window.innerHeight * 0.75))
@@ -404,19 +464,37 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
           lastCount = currentCount
           countIncreased = true
           consecutiveIdleCycles = 0
-          if (onProgress) onProgress(lastCount)
-          updateFloatingScanner(lastCount, 'Taranıyor...')
+
+          const allCached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+          const newCount = knownSet.size > 0
+            ? allCached.filter((it) => !knownSet.has(it.external_id) && !knownSet.has(it.permalink)).length
+            : allCached.length
+
+          if (onProgress) onProgress(currentCount, newCount)
+          updateFloatingScanner(
+            mode === 'delta' ? newCount : currentCount,
+            mode === 'delta' ? '⚡ Yeni gönderiler aranıyor...' : 'Taranıyor...'
+          )
+        }
+
+        // Check if delta boundary reached!
+        if (checkKnownBoundary()) {
+          isDeltaHit = true
+          break
         }
       }
 
-      // 3. If items were actively found during scroll, apply natural human delay before next scroll
+      if (isDeltaHit) {
+        break
+      }
+
+      // 3. Natural human pacing
       if (countIncreased) {
-        // Natural human pacing (1.2s - 1.8s) ensures Instagram NEVER triggers rate limits
         await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 600))
         continue
       }
 
-      // 3. No items grew on this scroll step. Let's check if Instagram is loading or needs time
+      // 4. Idle cycle handling (only when near page bottom)
       const isNearBottom =
         window.innerHeight + window.scrollY >= (document.documentElement.scrollHeight || document.body.scrollHeight) - 250
 
@@ -427,26 +505,26 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
       )
 
       if (isSpinnerVisible) {
-        // Wait for Instagram's network request to deliver tiles
         updateFloatingScanner(lastCount, 'Instagram yükleniyor...')
         await new Promise((resolve) => setTimeout(resolve, 1800))
         extractInstagramGridItems()
+
+        if (checkKnownBoundary()) {
+          isDeltaHit = true
+          break
+        }
+
         if (window.__SAVEDLENS_GRID_CACHE__.size > lastCount) {
           lastCount = window.__SAVEDLENS_GRID_CACHE__.size
           consecutiveIdleCycles = 0
-          if (onProgress) onProgress(lastCount)
-          updateFloatingScanner(lastCount, 'Taranıyor...')
           continue
         }
       }
 
-      // 4. Idle cycle handling (only when near page bottom)
       if (isNearBottom) {
         consecutiveIdleCycles++
         updateFloatingScanner(lastCount, `Bekleniyor (${consecutiveIdleCycles}/6)...`)
 
-        // Gentle re-trigger of IntersectionObserver:
-        // Scroll slightly UP and then DOWN smoothly
         window.scrollBy({ top: -300, behavior: 'smooth' })
         await new Promise((resolve) => setTimeout(resolve, 600))
 
@@ -457,32 +535,47 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
         await new Promise((resolve) => setTimeout(resolve, 1400))
 
         extractInstagramGridItems()
+
+        if (checkKnownBoundary()) {
+          isDeltaHit = true
+          break
+        }
+
         if (window.__SAVEDLENS_GRID_CACHE__.size > lastCount) {
           lastCount = window.__SAVEDLENS_GRID_CACHE__.size
           consecutiveIdleCycles = 0
-          if (onProgress) onProgress(lastCount)
-          updateFloatingScanner(lastCount, 'Taranıyor...')
           continue
         }
 
-        // Only stop if 6 consecutive idle cycles failed at the genuine bottom of the page
         if (consecutiveIdleCycles >= 6) {
           updateFloatingScanner(lastCount, 'Tüm liste tamamlandı ✓')
           break
         }
       } else {
-        // Not at bottom yet, just keep scrolling down!
         consecutiveIdleCycles = 0
       }
     }
 
     isAutoScrolling = false
     const finalItems = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
-    if (onProgress) onProgress(finalItems.length)
-    updateFloatingScanner(finalItems.length, 'Tamamlandı ✓')
+    const newItems = knownSet.size > 0
+      ? finalItems.filter((it) => !knownSet.has(it.external_id) && !knownSet.has(it.permalink))
+      : finalItems
+
+    if (onProgress) onProgress(finalItems.length, newItems.length)
+
+    if (isDeltaHit) {
+      updateFloatingScanner(newItems.length, `⚡ ${newItems.length} yeni gönderi tespit edildi ✓`)
+    } else {
+      updateFloatingScanner(finalItems.length, 'Tamamlandı ✓')
+    }
     hideFloatingScanner()
 
-    return finalItems
+    return {
+      items: finalItems,
+      newItems,
+      isDeltaHit,
+    }
   }
 
   // ── Inspect Page State (Distinguish Single Post vs Saved Grid) ─
@@ -614,10 +707,17 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     if (request.action === 'EXTRACT_SAVED_POSTS') {
       try {
         const items = extractInstagramGridItems()
+        const knownSet = new Set(request.options?.knownShortcodes || [])
+        const newItems = knownSet.size > 0
+          ? items.filter((it) => !knownSet.has(it.external_id) && !knownSet.has(it.permalink))
+          : items
+
         sendResponse({
           success: true,
           count: items.length,
+          newCount: newItems.length,
           items,
+          newItems,
           pageUrl: window.location.href,
         })
       } catch (err) {
@@ -634,14 +734,22 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     }
 
     if (request.action === 'AUTO_SCROLL_AND_EXTRACT') {
-      autoScrollAndCollect(400, (currentCount) => {
-        chrome.runtime.sendMessage({ action: 'SCROLL_PROGRESS', count: currentCount }).catch(() => {})
+      const options = request.options || {}
+      autoScrollAndCollect(options, (currentCount, newCount) => {
+        chrome.runtime.sendMessage({
+          action: 'SCROLL_PROGRESS',
+          count: currentCount,
+          newCount: typeof newCount === 'number' ? newCount : currentCount,
+        }).catch(() => {})
       })
-        .then((items) => {
+        .then((result) => {
           sendResponse({
             success: true,
-            count: items.length,
-            items,
+            count: result.items.length,
+            newCount: result.newItems ? result.newItems.length : result.items.length,
+            items: result.items,
+            newItems: result.newItems || result.items,
+            isDeltaHit: Boolean(result.isDeltaHit),
             pageUrl: window.location.href,
           })
         })
