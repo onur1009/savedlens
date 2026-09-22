@@ -1,7 +1,8 @@
 'use client'
 
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
-import { BookmarkPlus, Sparkles, DownloadCloud } from 'lucide-react'
+import { BookmarkPlus, Sparkles, DownloadCloud, Loader2, ChevronDown } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
 import ItemCard from './ItemCard'
 
@@ -10,7 +11,42 @@ interface LibraryGridProps {
   onItemClick?: (item: SavedItem) => void
 }
 
+const BATCH_SIZE = 32
+
 export default function LibraryGrid({ items, onItemClick }: LibraryGridProps) {
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  // Reset pagination when items filter / search changes
+  useEffect(() => {
+    setVisibleCount(BATCH_SIZE)
+  }, [items])
+
+  // Infinite Scroll: automatically load next batch as sentinel approaches viewport
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, items.length))
+        }
+      },
+      { rootMargin: '300px' }
+    )
+
+    const el = sentinelRef.current
+    if (el) observer.observe(el)
+
+    return () => {
+      if (el) observer.unobserve(el)
+    }
+  }, [items.length])
+
+  const visibleItems = useMemo(() => {
+    return items.slice(0, visibleCount)
+  }, [items, visibleCount])
+
+  const hasMore = visibleCount < items.length
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-4 text-center animate-fade-up glass rounded-3xl p-8 max-w-lg mx-auto glow-border">
@@ -45,14 +81,33 @@ export default function LibraryGrid({ items, onItemClick }: LibraryGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5 stagger">
-      {items.map((item) => (
-        <ItemCard
-          key={item.id}
-          item={item}
-          onClick={() => onItemClick?.(item)}
-        />
-      ))}
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5">
+        {visibleItems.map((item) => (
+          <ItemCard
+            key={item.id}
+            item={item}
+            onClick={() => onItemClick?.(item)}
+          />
+        ))}
+      </div>
+
+      {/* Infinite Scroll Sentinel & Load More Trigger */}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex flex-col items-center justify-center py-6 gap-2">
+          <button
+            type="button"
+            onClick={() => setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, items.length))}
+            className="px-5 py-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 border border-white/10 text-xs font-medium text-zinc-300 hover:text-white flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+          >
+            <ChevronDown className="w-4 h-4 text-purple-400" />
+            <span>Daha Fazla Göster ({visibleItems.length} / {items.length})</span>
+          </button>
+          <span className="text-[11px] text-zinc-500 font-mono">
+            Aşağı kaydırdıkça otomatik yüklenir
+          </span>
+        </div>
+      )}
     </div>
   )
 }
