@@ -25,55 +25,13 @@ const CATEGORY_TEMPLATES: Record<
     hashtags: string[]
   }
 > = {
-  ai_coding: {
-    category: 'productivity',
-    name: '⚡ Yapay Zeka & Kodlama',
-    color: '#6366f1',
-    icon: 'code',
-    keywords:
-      /\bkod\b|\bcode\b|yazılım|yazilim|developer|geliştirici|programlama|programlar|react|nextjs|javascript|typescript|python|\bcss\b|\bhtml\b|\bsql\b|yapay zeka|yapayzeka|\bai\b|chat[\s-]?gpt|claude|gemini|prompt|figma|\bui\b|\bux\b|tasarım|tasarim|tasarla|notion|excel|freelance|üretkenlik|verimlilik|kariyer|\biş\b|iş fikri|tool|araç|arac|\bmcp\b|ajan|agent|github|\brepo\b|\bapi\b|fullstack|backend|frontend|yazılımcı|teknoloji|tech|otomasyon|automation|remote|wfh|vibe coding|coding|cmo|lansman|chatbot|bot\b|terminal|ide\b|saas|mac mini|apple|windows|bilgisayar|sibergüvenlik|siber güvenlik|chrome|browser|tarayıcı|scraper|premiere|photoshop|mockup|vfx|lut\b|mocap|cgi\b|video edit|altyazı|kurgu|tutorial|efekt|pazarlama|dijital pazarlama|projectionmapping|speed ramp|pomelli/i,
-    hashtags: [
-      'yazilim',
-      'yazılım',
-      'kod',
-      'kodlama',
-      'yapayzeka',
-      'ai',
-      'developer',
-      'software',
-      'coding',
-      'tech',
-      'teknoloji',
-      'remotework',
-      'remotejobs',
-      'github',
-      'nextjs',
-      'react',
-      'python',
-      'chatgpt',
-      'prompt',
-      'mcp',
-      'vibecoding',
-      'automation',
-      'sibergüvenlik',
-      'premierepro',
-      'photoshop',
-      'mockup',
-      'windows',
-      'tasarim',
-      'tasarım',
-      'ui',
-      'ux',
-      'dijital',
-    ],
-  },
   recipe_food: {
     category: 'recipe',
     name: '🍳 Yemek & Mutfak Tarifleri',
     color: '#f59e0b',
     icon: 'chef-hat',
     keywords:
-      /tarif|tarifi|tarifler|yemek|yemekler|tatlı|tatli|tatlısı|kek|pasta|kurabiye|çorba|corba|makarna|börek|borek|kahvaltı|kahvalti|pilav|salata|salatası|meze|mutfak|lezzet|lezzetli|nefis|tavuk|köfte|nohut|mücver|dondurma|jelly|çılbır|risotto|limonata|poğaça|pogaça|dürüm|durum|cheesecake|mealprep|fırında|tencere|kısık ateş|pişirin|afiyet olsun|pudra şekeri|zeytinyağı|sarımsak|malzeme|malzemeler|porsiyon|proteinli|atıştırmalık|smoothie|kahve tarifi|gurme|yeme içme|veggie|flatbread|sastojci|leće|potatoes|carrots|broccoli|recipes in my bio|memasak|bisküvi|çikolata|cikolata/i,
+      /\bpatates\b|patatesli|patatesler|tarif|tarifi|tarifler|yemek|yemekler|tatlı|tatli|tatlısı|kek\b|pasta|kurabiye|çorba|corba|makarna|börek|borek|kahvaltı|kahvalti|pilav|salata|salatası|meze|mutfak|lezzet|lezzetli|nefis|tavuk|köfte|nohut|mücver|dondurma|jelly|çılbır|risotto|limonata|poğaça|pogaça|dürüm|durum|cheesecake|mealprep|fırında|tencere|kısık ateş|pişirin|pişir|afiyet olsun|pudra şekeri|zeytinyağı|sarımsak|malzeme|malzemeler|porsiyon|proteinli|atıştırmalık|smoothie|kahve tarifi|gurme|yeme içme|veggie|flatbread|bisküvi|çikolata|cikolata|tahin|tahinli|pekmez|peynir|kaşar|yoğurt|yogurt|süt|krema|tereyağı|tereyag|un\b|şeker|tuz\b|karabiber|pulbiber|kekik|kimyon|fırın|airfryer|tava\b|haşla|kızart|doğra|dilimle|karıştır|çırp|ekmek|sos\b|humus|pizza|burger|makarna sosu/i,
     hashtags: [
       'tarif',
       'tarifi',
@@ -98,6 +56,42 @@ const CATEGORY_TEMPLATES: Record<
       'dürüm',
       'mealprep',
       'gurme',
+      'sunum',
+      'sunumönemlidir',
+      'enfes',
+      'yemekneredeyenir',
+    ],
+  },
+  ai_coding: {
+    category: 'productivity',
+    name: '⚡ Yapay Zeka & Kodlama',
+    color: '#6366f1',
+    icon: 'code',
+    keywords:
+      /\bkod\b|\bcode\b|yazılım|yazilim|developer|geliştirici|programlama|react|nextjs|javascript|typescript|python|\bcss\b|\bhtml\b|\bsql\b|yapay zeka|yapayzeka|\bai\b|chat[\s-]?gpt|gpt-4|claude|gemini|prompt engineering|\bprompt\b|github|\brepo\b|\bapi\b|fullstack|backend|frontend|yazılımcı|vibe coding|coding|chatbot|\bmcp\b|open source|docker|kubernetes|terminal|ide\b|saas|sibergüvenlik|siber güvenlik|makine öğrenimi|derin öğrenme|llm\b|transformer\b|huggingface|devops|postgresql|supabase|tailwindcss|cursor|windsurf|copilot|anthropic|openai/i,
+    hashtags: [
+      'yazilim',
+      'yazılım',
+      'kod',
+      'kodlama',
+      'yapayzeka',
+      'ai',
+      'developer',
+      'software',
+      'coding',
+      'tech',
+      'teknoloji',
+      'github',
+      'nextjs',
+      'react',
+      'python',
+      'chatgpt',
+      'prompt',
+      'mcp',
+      'vibecoding',
+      'automation',
+      'sibergüvenlik',
+      'cursor',
     ],
   },
   health_fitness: {
@@ -106,7 +100,7 @@ const CATEGORY_TEMPLATES: Record<
     color: '#10b981',
     icon: 'heart-pulse',
     keywords:
-      /(?:uzm|op|prof|doç|doc)\.?\s*dr\.?|\bdr\.\s+[a-zğüşıöç]|@dr[a-z0-9_]+|\bdoktor\b|\bhekim\b|\bcerrah\b|\btabip\b|\bdr\b|\bdyt\b|\bdiyetisyen\b|photo by (?:dr|dyt)|hastane|hospital|klinik|clinic|ameliyat|tedavi|muayene|hastalık|hastalik|sağlık|saglik|botoks|botox|dolgu|estetik|diş hekimi|dermatolog|cildiye|psikolog|psikiyatri|fizik tedavi|diyetisyen|diyet\b|kilo\b|zayıfla|kalori|beslenme|uzun yaşam|longevity|check-up|tahlil|ultrason|hemoroid|sağlıklı yaşam|saglikli yasam|fit\b|protein|iç bacak|egzersiz|fitness|antrenman|spor\b|direnkartal|azye|psikoloji|terapi/i,
+      /doktor|hekim|cerrah|uzm\.?\s*dr|op\.?\s*dr|prof\.?\s*dr|doç\.?\s*dr|dyt\b|diyetisyen|hastane|hospital|klinik|clinic|ameliyat|tedavi|muayene|hastalık|hastalik|sağlık|saglik|botoks|botox|dolgu|estetik|diş hekimi|dermatolog|cildiye|psikolog|psikiyatri|fizik tedavi|diyet\b|kilo\b|zayıfla|kalori|beslenme uzmanı|uzun yaşam|longevity|check-up|tahlil|ultrason|sağlıklı yaşam|saglikli yasam|iç bacak|egzersiz|fitness|antrenman|spor\b|pilates|kardiyo|postür|omurga|fizyoterapi/i,
     hashtags: [
       'doktor',
       'saglik',
@@ -129,28 +123,7 @@ const CATEGORY_TEMPLATES: Record<
       'fit',
       'fitness',
       'egzersiz',
-      'azye',
       'psikoloji',
-    ],
-  },
-  home_decor: {
-    category: 'product',
-    name: '🛋️ Ev Dekorasyonu & Mobilya',
-    color: '#ec4899',
-    icon: 'shopping-bag',
-    keywords:
-      /mobilya|dekorasyon|iç mimar|koltuk|dolap|cabinet|interior|noithat|sofa|yatak|temizlik|cleaning|küf|tasarım mobilya|ikea|einrichtung|home office|süpürgelik|lifehack|plumbing|thietkenoithat/i,
-    hashtags: [
-      'mobilya',
-      'dekorasyon',
-      'temizlik',
-      'cleaning',
-      'interior',
-      'noithat',
-      'homeoffice',
-      'ikea',
-      'thietkenoithat',
-      'evdekorasyonu',
     ],
   },
   travel_explore: {
@@ -159,7 +132,7 @@ const CATEGORY_TEMPLATES: Record<
     color: '#3b82f6',
     icon: 'map-pin',
     keywords:
-      /istanbul|ankara|izmir|antalya|bodrum|kaş|kas|kapadokya|muğla|mugla|fethiye|datça|datca|bali|ubud|mekan|mekanlar|restoran|restaurant|cafe|kafe|kahve|kahveci|coffee|gezi|otel|hotel|rota|rotası|seyahat|travel|tatil|plaj|beach|koy\b|manzara|gezi rehber|şehir rehber|konaklama|karaköy|kadıköy|beşiktaş|moda|nişantaşı|beyoğlu|balat|bali trip|itinerary|dolce far niente|summer|uçak/i,
+      /istanbul|ankara|izmir|antalya|bodrum|kaş|kas|kapadokya|muğla|mugla|fethiye|datça|datca|bali|ubud|mekan|mekanlar|restoran|restaurant|cafe|kafe|kahveci|gezi|otel|hotel|rota|rotası|seyahat|travel|tatil|plaj|beach|koy\b|manzara|gezi rehber|şehir rehber|konaklama|karaköy|kadıköy|beşiktaş|moda|nişantaşı|beyoğlu|balat|itinerary|dolce far niente|uçak bileti|vize|pasaport/i,
     hashtags: [
       'gezi',
       'seyahat',
@@ -183,7 +156,7 @@ const CATEGORY_TEMPLATES: Record<
     color: '#f43f5e',
     icon: 'ticket',
     keywords:
-      /fiyat|satın al|satin al|indirim|kod[u]?\b|kupon|fırsat|kampanya|ürün|urun|link\b|linki|link bio|biyoda|öneri|tavsiye|trendyol|hepsiburada|amazon|zara|mango|kombin|alışveriş|çanta|ayakkabı|kulaklık|telefon|laptop|monitör|klavye|parfüm|parfum|kumaş|bambu|whisky|sartorial/i,
+      /indirim|satın al|satin al|kupon|fırsat|kampanya|trendyol|hepsiburada|amazon|zara|mango|kombin|alışveriş|çanta|ayakkabı|kulaklık|telefon|laptop|parfüm|parfum|link biyoda|link bio|biyodaki link|fiyatı|gardırop|outfit|satışta link/i,
     hashtags: [
       'indirim',
       'firsat',
@@ -204,7 +177,7 @@ const CATEGORY_TEMPLATES: Record<
     color: '#8b5cf6',
     icon: 'book-open',
     keywords:
-      /kitap|film|dizi|netflix|sinema|roman|okuma|yazar|oneri dizi|öneri dizi|imdb|spoiler|karakter|bölüm|bolum|sezon|belgesel|kitap önerisi|film önerisi|kitaplar|filmler|diziler|tiyatro|sinemalar|seyirlik|steam oyun|oyunlar|\bgaming\b|\bgame\b|tyndalston|ghost\b|🎮|çizgi dizi|superman|\bdc\b/i,
+      /kitap|film|dizi|netflix|sinema|roman|okuma|yazar|oneri dizi|öneri dizi|imdb|spoiler|karakter|bölüm|bolum|sezon|belgesel|kitap önerisi|film önerisi|kitaplar|filmler|diziler|tiyatro|steam oyun|oyunlar|\bgaming\b|\bgame\b|çizgi dizi/i,
     hashtags: [
       'kitap',
       'film',
@@ -220,10 +193,71 @@ const CATEGORY_TEMPLATES: Record<
       'oyun',
     ],
   },
+  home_decor: {
+    category: 'product',
+    name: '🛋️ Ev Dekorasyonu & Mobilya',
+    color: '#ec4899',
+    icon: 'shopping-bag',
+    keywords:
+      /mobilya|dekorasyon|iç mimar|koltuk|dolap|cabinet|interior|sofa|yatak|temizlik|tasarım mobilya|ikea|home office|tadilat|ev dekorasyonu/i,
+    hashtags: [
+      'mobilya',
+      'dekorasyon',
+      'temizlik',
+      'cleaning',
+      'interior',
+      'homeoffice',
+      'ikea',
+      'evdekorasyonu',
+    ],
+  },
+}
+
+function generateIntelligentSummary(
+  category: BookmarkCategory,
+  title: string | null | undefined,
+  caption: string | null | undefined,
+  templateName: string
+): string {
+  const cleanTitle = title?.replace(/[\r\n]+/g, ' ').trim() || ''
+  const firstLine = caption?.split('\n').map((s) => s.trim()).filter(Boolean)[0] || ''
+  const subject =
+    cleanTitle.length > 5 && cleanTitle.length < 75
+      ? cleanTitle
+      : firstLine.length > 5 && firstLine.length < 75
+      ? firstLine
+      : ''
+
+  if (category === 'recipe') {
+    if (subject) return `${subject} — Malzeme listesi ve yapılış adımları.`
+    return 'Lezzetli ve pratik tarif / mutfak önerisi.'
+  }
+  if (category === 'productivity') {
+    if (subject) return `${subject} — Kodlama, yapay zeka ve üretkenlik ipuçları.`
+    return 'Yazılım, yapay zeka araçları ve teknoloji rehberi.'
+  }
+  if (category === 'health') {
+    if (subject) return `${subject} — Sağlık, beslenme ve uzman tavsiyeleri.`
+    return 'Sağlık, diyetisyen ve tıp bilgilendirmesi.'
+  }
+  if (category === 'travel') {
+    if (subject) return `${subject} — Rota, seyahat ve mekan rehberi.`
+    return 'Şehir rehberi, rota ve mekan önerisi.'
+  }
+  if (category === 'product') {
+    if (subject) return `${subject} — Ürün incelemesi ve önerisi.`
+    return 'Ürün incelemesi, indirim ve alışveriş önerisi.'
+  }
+  if (category === 'book_movie') {
+    if (subject) return `${subject} — Kitap, dizi ve film incelemesi.`
+    return 'Kitap, dizi ve film önerisi.'
+  }
+  return subject ? `${subject} kütüphanenizde arşivlendi.` : `${templateName} kategorisinde arşivlendi.`
 }
 
 /**
- * Plans the smart category, collection name, tags and summary from raw content.
+ * Plans the smart category, collection name, tags and summary using
+ * a Scored Multi-Factor Classification Engine.
  */
 export function planSmartCategory(
   title: string | null | undefined,
@@ -234,35 +268,55 @@ export function planSmartCategory(
   const text = rawText.toLowerCase()
   const hashtags = extractHashtags(rawText)
 
-  for (const [, tmpl] of Object.entries(CATEGORY_TEMPLATES)) {
-    const matchesKeywords = tmpl.keywords.test(text)
-    const matchesHashtags = hashtags.some((h) => tmpl.hashtags.includes(h))
+  const scores: Record<string, number> = {}
 
-    if (matchesKeywords || matchesHashtags) {
-      let customSummary = `${title || 'Gönderi'} — ${tmpl.name} kategorisinde arşivlendi.`
-      if (tmpl.category === 'recipe') customSummary = 'Lezzetli ve pratik tarif / mutfak önerisi.'
-      else if (tmpl.category === 'productivity') customSummary = 'Yapay zeka, kodlama ve teknoloji rehberi.'
-      else if (tmpl.category === 'health') customSummary = 'Sağlık, diyetisyen ve tıp bilgilendirmesi.'
-      else if (tmpl.category === 'travel') customSummary = 'Şehir rehberi, rota ve mekan önerisi.'
+  for (const [key, tmpl] of Object.entries(CATEGORY_TEMPLATES)) {
+    let score = 0
+    const matches = text.match(new RegExp(tmpl.keywords.source, 'gi')) || []
+    score += matches.length * 10
 
-      const primaryTags = tmpl.hashtags.filter((h) => text.includes(h)).slice(0, 3)
-      const mergedTags = Array.from(new Set([...primaryTags, ...hashtags])).slice(0, 7)
+    for (const h of hashtags) {
+      if (tmpl.hashtags.includes(h)) score += 15
+    }
+    scores[key] = score
+  }
 
-      return {
-        category: tmpl.category,
-        collectionName: tmpl.name,
-        collectionColor: tmpl.color,
-        collectionIcon: tmpl.icon,
-        tags: mergedTags.length > 0 ? mergedTags : [tmpl.name.split(' ')[1]?.toLowerCase() || 'genel'],
-        summary: customSummary,
-        extractors: {
-          recipe: tmpl.category === 'recipe',
-          health: tmpl.category === 'health',
-          code: tmpl.category === 'productivity',
-          location: tmpl.category === 'travel',
-          discount: tmpl.category === 'product' && /indirim|fırsat|kampanya/i.test(text),
-        },
-      }
+  // Cross-category guardrails:
+  // 1. Food/Recipe Priority: recipes must NEVER be classified as AI/Coding!
+  if (scores.recipe_food > 0) {
+    scores.ai_coding = Math.max(0, scores.ai_coding - 100)
+    scores.products_shopping = Math.max(0, scores.products_shopping - 30)
+  }
+
+  // 2. Doctor/Health Priority
+  if (scores.health_fitness > 0 && /doktor|hekim|hasta|tedavi|ameliyat|uzm\.?\s*dr|dyt\b/i.test(text)) {
+    scores.health_fitness += 25
+  }
+
+  // Sort candidate categories by highest confidence score
+  const sortedCandidates = Object.entries(scores).sort((a, b) => b[1] - a[1])
+  const best = sortedCandidates[0]
+
+  if (best && best[1] >= 10) {
+    const tmpl = CATEGORY_TEMPLATES[best[0]]
+    const customSummary = generateIntelligentSummary(tmpl.category, title, caption, tmpl.name)
+    const primaryTags = tmpl.hashtags.filter((h) => text.includes(h)).slice(0, 3)
+    const mergedTags = Array.from(new Set([...primaryTags, ...hashtags])).slice(0, 7)
+
+    return {
+      category: tmpl.category,
+      collectionName: tmpl.name,
+      collectionColor: tmpl.color,
+      collectionIcon: tmpl.icon,
+      tags: mergedTags.length > 0 ? mergedTags : [tmpl.name.split(' ')[1]?.toLowerCase() || 'genel'],
+      summary: customSummary,
+      extractors: {
+        recipe: tmpl.category === 'recipe',
+        health: tmpl.category === 'health',
+        code: tmpl.category === 'productivity',
+        location: tmpl.category === 'travel',
+        discount: tmpl.category === 'product' && /indirim|fırsat|kampanya/i.test(text),
+      },
     }
   }
 

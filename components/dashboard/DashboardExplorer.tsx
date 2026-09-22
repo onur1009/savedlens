@@ -29,6 +29,26 @@ interface CollectionOption {
   color: string
 }
 
+function normalizeTurkishSearch(str: string | null | undefined): string {
+  if (!str) return ''
+  return str
+    .toLocaleLowerCase('tr-TR')
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .replace(/ı/g, 'i')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .trim()
+}
+
+function getStem(token: string): string {
+  if (token.length < 4) return token
+  return token.replace(/(li|lı|lu|lü|lerin|ların|ler|lar|den|dan|de|da|nin|nın|in|ın|i|ı|e|a)$/, '')
+}
+
 interface DashboardExplorerProps {
   initialItems: SavedItem[]
   userCollections?: CollectionOption[]
@@ -219,17 +239,58 @@ export default function DashboardExplorer({
         if (!hasAllTags) return false
       }
 
-      // 7. Full-text search (when semantic search is not active)
+      // 7. Intelligent Multi-Token Search with Turkish Normalization & Stemming
       if (!isSemanticSearch && searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim()
-        const matchTitle = (item.title || '').toLowerCase().includes(query)
-        const matchDesc = (item.description || '').toLowerCase().includes(query)
-        const matchAuthor = (item.author_username || '').toLowerCase().includes(query)
-        const matchSummary = (item.summary || '').toLowerCase().includes(query)
-        const matchTranscript = (item.transcript || '').toLowerCase().includes(query)
-        const matchTags = (item.tags || []).some((t) => t.toLowerCase().includes(query))
+        const normQuery = normalizeTurkishSearch(searchQuery)
+        const rawTokens = normQuery.split(/\s+/).filter(Boolean)
+        const tokens = rawTokens.map((t) => ({
+          raw: t,
+          stem: getStem(t),
+        }))
 
-        if (!matchTitle && !matchDesc && !matchAuthor && !matchSummary && !matchTranscript && !matchTags) {
+        // Searchable content from all dimensions of the bookmark
+        const actionData = item.actionable_data as Record<string, unknown> | undefined
+        const ingredientsText = Array.isArray(actionData?.ingredients) ? actionData.ingredients.join(' ') : ''
+        const stepsText = Array.isArray(actionData?.steps) ? actionData.steps.join(' ') : ''
+
+        const categoryKeywords =
+          item.category === 'recipe'
+            ? 'tarif yemek mutfak lezzet tatli pismis malzeme'
+            : item.category === 'productivity'
+            ? 'yazilim kod yapayzeka ai teknoloji developer prompt'
+            : item.category === 'health'
+            ? 'saglik doktor hekim klinik tedavi beslenme egzersiz'
+            : item.category === 'travel'
+            ? 'gezi seyahat mekan otel rota kafe tatil'
+            : item.category === 'product'
+            ? 'urun alisveris indirim kampanya fiyat link'
+            : item.category === 'book_movie'
+            ? 'kitap film dizi sinema oyun belgesel'
+            : ''
+
+        const rawCorpus = [
+          item.title || '',
+          item.description || '',
+          item.summary || '',
+          (item.tags || []).join(' '),
+          item.author_username || '',
+          item.author_name || '',
+          item.transcript || '',
+          ingredientsText,
+          stepsText,
+          categoryKeywords,
+        ].join(' ')
+
+        const normalizedCorpus = normalizeTurkishSearch(rawCorpus)
+
+        // Every token (or its linguistic stem) must match somewhere in the corpus
+        const allTokensMatch = tokens.every((t) => {
+          if (normalizedCorpus.includes(t.raw)) return true
+          if (t.stem.length >= 3 && normalizedCorpus.includes(t.stem)) return true
+          return false
+        })
+
+        if (!allTokensMatch) {
           return false
         }
       }
@@ -598,6 +659,22 @@ export default function DashboardExplorer({
             <span>
               <strong>{filteredItems.length}</strong> içerik listeleniyor (toplam {items.length})
             </span>
+            {searchQuery.trim() && (
+              <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-200 border border-purple-500/40 font-semibold flex items-center gap-1.5">
+                <span>🔍 &ldquo;{searchQuery}&rdquo;</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-900/80 text-purple-300 font-bold">
+                  {filteredItems.length} sonuç
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="hover:text-white text-purple-400 p-0.5"
+                  title="Aramayı temizle"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
             {isSemanticSearch && (
               <span className="px-2 py-0.2 rounded bg-purple-950/80 text-purple-300 border border-purple-700/50 font-semibold flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-purple-400" />

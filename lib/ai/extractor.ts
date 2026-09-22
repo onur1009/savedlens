@@ -178,9 +178,9 @@ export function extractOfflineFallback(
     }
   }
 
-  // 3. Productivity / Software / AI / Tech / Tools / Creative Media (Kod, Yazılım, Yapay Zeka, Tasarım, Araçlar, Video Kurgu, Marketing)
+  // 3. Productivity / Software / AI / Tech / Tools / Development
   const isCodeOrAI =
-    /\bkod\b|\bcode\b|yazılım|yazilim|developer|geliştirici|programlama|programlar|react|nextjs|javascript|typescript|python|\bcss\b|\bhtml\b|\bsql\b|yapay zeka|yapayzeka|\bai\b|chat[\s-]?gpt|claude|gemini|prompt|figma|\bui\b|\bux\b|tasarım|tasarim|tasarla|notion|excel|freelance|üretkenlik|verimlilik|kariyer|\biş\b|iş fikri|tool|araç|arac|\bmcp\b|ajan|agent|github|\brepo\b|\bapi\b|fullstack|backend|frontend|yazılımcı|teknoloji|tech|otomasyon|automation|remote|wfh|vibe coding|coding|cmo|lansman|chatbot|bot\b|terminal|ide\b|saas|mac mini|apple|windows|bilgisayar|sibergüvenlik|siber güvenlik|chrome|browser|tarayıcı|scraper|premiere|photoshop|mockup|vfx|lut\b|mocap|cgi\b|video edit|altyazı|kurgu|tutorial|efekt|pazarlama|dijital pazarlama|projectionmapping|websites you should know|speed ramp|pomelli|fotoğrafçılık|fotoğraf çek|yüksek iso|çekim|site\b|sitesi|websites|app:|app name/i.test(
+    /\bkod\b|\bcode\b|yazılım|yazilim|developer|geliştirici|programlama|react|nextjs|javascript|typescript|python|\bcss\b|\bhtml\b|\bsql\b|yapay zeka|yapayzeka|\bai\b|chat[\s-]?gpt|gpt-4|claude|gemini|prompt engineering|\bprompt\b|figma|notion|github|\brepo\b|\bapi\b|fullstack|backend|frontend|yazılımcı|vibe coding|coding|chatbot|\bmcp\b|open source|docker|kubernetes|terminal|ide\b|saas|sibergüvenlik|siber güvenlik|makine öğrenimi|derin öğrenme|llm\b|transformer\b|huggingface|devops|postgresql|supabase|tailwindcss|cursor|windsurf|copilot|anthropic|openai/i.test(
       text
     ) ||
     hashtags.some((h) =>

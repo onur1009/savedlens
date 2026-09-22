@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "SavedLens — Akıllı İçerik & Sosyal Medya Senkronizasyonu",
-  "version": "1.2.0",
+  "name": "SavedLens V3 — AI Akıllı Kaydedilenler & İkinci Beyin",
+  "version": "3.0.0",
   "description": "Instagram, Twitter, TikTok, YouTube ve web içeriklerinizi tek tıkla SavedLens kütüphanenize aktarın, yedekleyin ve AI ile etiketleyin.",
   "icons": {
     "16": "icon16.png",

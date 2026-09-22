@@ -75,8 +75,8 @@ export default function FilterBar({
             onChange={(e) => onSearchChange?.(e.target.value)}
             placeholder={
               isSemanticSearch
-                ? "🧠 İkinci Beyin Semantik Arama: örn. 'tatlı tarifleri', 'sessiz kahveciler'..."
-                : "Reels, içerik, yazar (@kullanıcı) veya etiketlerde ara..."
+                ? "🧠 İkinci Beyin Semantik Arama: örn. 'patates tarifi', 'tatlılar', 'sessiz kahveciler'..."
+                : "Patates tarifi, yemek, reels, yazar (@kullanıcı) veya etiketlerde ara..."
             }
             className={`w-full pl-10 pr-9 py-2 rounded-xl bg-[var(--bg-surface)] border text-xs sm:text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-all ${
               isSemanticSearch

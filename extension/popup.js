@@ -56,34 +56,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ── 1. Settings & Storage Management ──────────────────────────
   if (chrome.storage && chrome.storage.local) {
-    chrome.storage.local.get(
-      ['savedlens_server_url', 'savedlens_sync_token', 'savedlens_known_shortcodes', 'savedlens_library_count'],
-      (res) => {
-        if (res.savedlens_server_url) {
-          serverInput.value = res.savedlens_server_url
-          updateDashboardLink(res.savedlens_server_url)
-          if (res.savedlens_server_url.includes('localhost')) {
-            pillLocal?.classList.add('active')
-            pillProd?.classList.remove('active')
-          }
-        }
+    const res = await new Promise((resolve) => {
+      chrome.storage.local.get(
+        ['savedlens_server_url', 'savedlens_sync_token', 'savedlens_known_shortcodes', 'savedlens_library_count'],
+        resolve
+      )
+    })
 
-        if (res.savedlens_sync_token) {
-          tokenInput.value = res.savedlens_sync_token
-          if (tokenStatus) {
-            tokenStatus.textContent = 'Token Kayıtlı ✓'
-            tokenStatus.style.color = 'var(--success)'
-          }
-        }
-
-        if (Array.isArray(res.savedlens_known_shortcodes)) {
-          knownShortcodes = res.savedlens_known_shortcodes
-        }
-        if (typeof res.savedlens_library_count === 'number') {
-          libraryCount = res.savedlens_library_count
+    if (res) {
+      if (res.savedlens_server_url) {
+        serverInput.value = res.savedlens_server_url
+        updateDashboardLink(res.savedlens_server_url)
+        if (res.savedlens_server_url.includes('localhost')) {
+          pillLocal?.classList.add('active')
+          pillProd?.classList.remove('active')
         }
       }
-    )
+
+      if (res.savedlens_sync_token) {
+        tokenInput.value = res.savedlens_sync_token
+        if (tokenStatus) {
+          tokenStatus.textContent = 'Token Kayıtlı ✓'
+          tokenStatus.style.color = 'var(--success)'
+        }
+      }
+
+      if (Array.isArray(res.savedlens_known_shortcodes)) {
+        knownShortcodes = res.savedlens_known_shortcodes
+      }
+      if (typeof res.savedlens_library_count === 'number') {
+        libraryCount = res.savedlens_library_count
+      }
+    }
   }
 
   function saveConfig() {
@@ -237,12 +241,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const initialServerUrl = serverInput.value.trim().replace(/\/$/, '') || DEFAULT_SERVER
   const initialToken = tokenInput.value.trim()
 
-  // Proactively fetch library status from server
-  refreshKnownShortcodes(initialServerUrl, initialToken).then(() => {
-    if (currentMode === 'saved_collection') {
-      applySavedCollectionUI()
-    }
-  })
+  // Proactively fetch library status from server before rendering
+  await refreshKnownShortcodes(initialServerUrl, initialToken)
+  if (currentMode === 'saved_collection') {
+    applySavedCollectionUI()
+  }
 
   function applySavedCollectionUI() {
     currentMode = 'saved_collection'
@@ -533,6 +536,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         const isDeltaMode = libraryCount > 0
 
+        // Ensure we have fresh known shortcodes from server
+        if (isDeltaMode && knownShortcodes.length === 0) {
+          btnText.textContent = '⚡ Kütüphane kontrol ediliyor...'
+          await refreshKnownShortcodes(serverUrl, token)
+        }
+
         btnText.textContent = isDeltaMode ? '⚡ Yeni gönderiler taranıyor...' : 'Tüm gönderiler taranıyor...'
 
         // Listen for live progress
@@ -550,7 +559,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const scanOptions = {
           mode: isDeltaMode ? 'delta' : 'full',
           knownShortcodes,
-          consecutiveKnownThreshold: 3,
+          consecutiveKnownThreshold: 2,
         }
 
         const scanResp = await new Promise((resolve) => {

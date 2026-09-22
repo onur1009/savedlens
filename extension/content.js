@@ -367,15 +367,33 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     const mode = options.mode || 'delta' // 'delta' (smart incremental) or 'full'
     const knownList = Array.isArray(options.knownShortcodes) ? options.knownShortcodes : []
     const knownSet = new Set(knownList)
-    const consecutiveThreshold = options.consecutiveKnownThreshold || 3
+    const consecutiveThreshold = options.consecutiveKnownThreshold || 2
     const maxRounds = options.maxRounds || 400
 
     let isDeltaHit = false
 
-    // Helper: inspect DOM links in reverse-chronological order to check if we reached already-saved posts
+    // Helper: inspect DOM links & cached items to check if we reached already-saved posts
     function checkKnownBoundary() {
       if (mode !== 'delta' || knownSet.size === 0) return false
 
+      // 1. Check harvested items cache
+      const cached = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+      let cacheStreak = 0
+      for (const it of cached) {
+        const isKnown =
+          (it.external_id && knownSet.has(it.external_id)) ||
+          (it.permalink && knownSet.has(it.permalink))
+        if (isKnown) {
+          cacheStreak++
+          if (cacheStreak >= consecutiveThreshold) {
+            return true
+          }
+        } else {
+          cacheStreak = 0
+        }
+      }
+
+      // 2. Check DOM links in reverse-chronological order
       const links = document.querySelectorAll(
         'main a[href*="/p/"], main a[href*="/reel/"], a[href*="/p/"], a[href*="/reel/"]'
       )
