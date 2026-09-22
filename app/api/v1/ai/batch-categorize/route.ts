@@ -39,18 +39,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
     }
 
-    // 1. Fetch user bookmarks (lean select)
-    const { data: bookmarks, error: fetchErr } = await supabase
-      .from('bookmarks')
-      .select('id, user_id, platform, permalink, caption, author_username, author_name, extractors')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(10000)
-
-    if (fetchErr) {
-      console.error('[batch-categorize] Fetch error:', fetchErr)
-      return NextResponse.json({ error: 'İçerikler alınamadı: ' + fetchErr.message }, { status: 500 })
-    }
+    // 1. Fetch user bookmarks (lean select without 1000 limit)
+    const { fetchAllUserBookmarks } = await import('@/lib/supabase/fetch-all')
+    const bookmarks = await fetchAllUserBookmarks<{
+      id: string
+      user_id: string
+      platform: string
+      permalink: string
+      caption: string | null
+      author_username: string | null
+      author_name: string | null
+      extractors: Record<string, unknown> | null
+    }>(
+      supabase,
+      user.id,
+      'id, user_id, platform, permalink, caption, author_username, author_name, extractors'
+    )
 
     if (!bookmarks || bookmarks.length === 0) {
       return NextResponse.json({

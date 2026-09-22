@@ -117,18 +117,14 @@ export async function GET(request: Request) {
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const admin = createAdminClient()
 
-    // Fetch existing bookmarks for this user
-    const { data: bms, error } = await admin
-      .from('bookmarks')
-      .select('external_id, permalink, created_at, saved_at')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(10000)
-
-    if (error) {
-      console.error('[sync/instagram GET] Error:', error)
-      return NextResponse.json({ error: error.message }, { status: 500, headers: CORS_HEADERS })
-    }
+    // Fetch all existing bookmarks for this user without PostgREST 1000 limit
+    const { fetchAllUserBookmarks } = await import('@/lib/supabase/fetch-all')
+    const bms = await fetchAllUserBookmarks<{
+      external_id: string | null
+      permalink: string
+      created_at: string
+      saved_at: string | null
+    }>(admin, userId, 'external_id, permalink, created_at, saved_at')
 
     const shortcodesSet = new Set<string>()
     let latestSavedAt: string | null = null

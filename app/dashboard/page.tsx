@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { SavedItem } from '@/lib/mock-data'
 import DashboardExplorer from '@/components/dashboard/DashboardExplorer'
 import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
+import { fetchAllUserBookmarks } from '@/lib/supabase/fetch-all'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -18,24 +19,19 @@ export default async function DashboardPage() {
     user.email?.split('@')[0] ||
     'Kullanıcı'
 
-  // Fetch real bookmarks (with collections join) and user collections in parallel
-  const [bookmarksRes, collectionsRes] = await Promise.all([
-    supabase
-      .from('bookmarks')
-      .select('*, bookmark_collections(collection_id, collections(id, name, color))')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(10000),
+  // Fetch real bookmarks (with collections join) without 1000 row cap, and user collections in parallel
+  const [rawBookmarks, collectionsRes] = await Promise.all([
+    fetchAllUserBookmarks<RawBookmarkRow>(
+      supabase,
+      user.id,
+      '*, bookmark_collections(collection_id, collections(id, name, color))'
+    ),
     supabase
       .from('collections')
       .select('id, name, color, icon')
       .eq('user_id', user.id)
       .order('name', { ascending: true }),
   ])
-
-  if (bookmarksRes.error) {
-    console.error('Error fetching bookmarks:', bookmarksRes.error)
-  }
 
   interface RawCollectionRow {
     id: string
@@ -82,7 +78,7 @@ export default async function DashboardPage() {
   }))
 
   // Map database rows to SavedItem format including collection info
-  const items: SavedItem[] = ((bookmarksRes.data as unknown as RawBookmarkRow[]) || []).map((b) => {
+  const items: SavedItem[] = (rawBookmarks || []).map((b) => {
     const colObj = b.bookmark_collections?.[0]?.collections
     const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
     const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)

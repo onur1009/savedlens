@@ -7,7 +7,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const format = (searchParams.get('format') || 'csv').toLowerCase()
 
-    let items = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let items: Array<Record<string, any>> = []
 
     if (isSupabaseConfigured()) {
       const { createClient } = await import('@/lib/supabase/server')
@@ -18,13 +19,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
       }
 
-      const { data } = await supabase
-        .from('bookmarks')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-
-      items = data || []
+      const { fetchAllUserBookmarks } = await import('@/lib/supabase/fetch-all')
+      items = await fetchAllUserBookmarks(supabase, user.id, '*')
     } else {
       // Offline fallback: use mock bookmarks
       items = MOCK_BOOKMARKS

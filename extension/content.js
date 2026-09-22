@@ -364,7 +364,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     const knownList = Array.isArray(options.knownShortcodes) ? options.knownShortcodes : []
     const knownSet = new Set(knownList)
     const consecutiveThreshold = options.consecutiveKnownThreshold || 3
-    const maxRounds = options.maxRounds || 400
+    const maxRounds = options.maxRounds || 50000
 
     let isDeltaHit = false
 

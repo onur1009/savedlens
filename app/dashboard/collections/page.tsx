@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import type { Collection, Bookmark } from '@/lib/mock-data'
 import CollectionsExplorer from '@/components/dashboard/CollectionsExplorer'
+import { fetchAllUserBookmarks } from '@/lib/supabase/fetch-all'
 
 export default async function CollectionsPage() {
   const supabase = await createClient()
@@ -11,18 +12,17 @@ export default async function CollectionsPage() {
     redirect('/auth/login')
   }
 
-  const [colRes, bmRes] = await Promise.all([
+  const [colRes, rawBookmarks] = await Promise.all([
     supabase
       .from('collections')
       .select('*, bookmark_collections(bookmark_id)')
       .eq('user_id', user.id)
       .order('name'),
-    supabase
-      .from('bookmarks')
-      .select('*, bookmark_collections(collection_id)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(10000),
+    fetchAllUserBookmarks<RawDbBookmark>(
+      supabase,
+      user.id,
+      '*, bookmark_collections(collection_id)'
+    ),
   ])
 
   interface RawDbCollection {
@@ -47,7 +47,7 @@ export default async function CollectionsPage() {
     created_at: col.created_at,
   }))
 
-  const bookmarks: Bookmark[] = ((bmRes.data as unknown as RawDbBookmark[]) || []).map((b) => ({
+  const bookmarks: Bookmark[] = (rawBookmarks || []).map((b) => ({
     id: b.id,
     user_id: b.user_id,
     platform: b.platform,
