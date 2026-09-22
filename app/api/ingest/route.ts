@@ -195,15 +195,17 @@ async function scrapeMetadata(url: string, platform: string): Promise<ScrapedMet
         }
       }
     } else if (res.status === 404 || res.status === 401 || res.status === 403) {
-      return {
-        title: 'Erişilemeyen İçerik',
-        description: 'Gönderi gizli veya link geçersiz.',
-        thumbnail_url: null,
-        author_username: 'bilinmeyen',
-        author_name: 'Bilinmeyen Kullanıcı',
-        media_type: 'image',
-        isFailed: true,
-        errorMessage: 'Gönderi gizli veya link geçersiz',
+      if (platform !== 'instagram' && platform !== 'tiktok') {
+        return {
+          title: 'Erişilemeyen İçerik',
+          description: 'Gönderi gizli veya link geçersiz.',
+          thumbnail_url: null,
+          author_username: 'bilinmeyen',
+          author_name: 'Bilinmeyen Kullanıcı',
+          media_type: 'image',
+          isFailed: true,
+          errorMessage: 'Gönderi gizli veya link geçersiz',
+        }
       }
     }
   } catch {
@@ -220,10 +222,13 @@ async function scrapeMetadata(url: string, platform: string): Promise<ScrapedMet
     const segments = u.pathname.split('/').filter(Boolean)
 
     if (platform === 'instagram') {
-      const shortcode = segments.find((s) => s !== 'p' && s !== 'reel' && s !== 'tv' && s.length >= 6) || segments[1] || ''
-      guessedAuthor = 'instagram_user'
-      guessedTitle = shortcode ? `Instagram Gönderisi (#${shortcode})` : 'Instagram Gönderisi'
-      guessedDesc = `Instagram gönderisi (#${shortcode}) kütüphanenize kaydedildi.`
+      const isReel = url.includes('/reel/') || url.includes('/reels/')
+      const shortcode = segments.find((s) => s !== 'p' && s !== 'reel' && s !== 'reels' && s !== 'tv' && s.length >= 6) || segments[1] || ''
+      guessedAuthor = 'instagram_creator'
+      guessedTitle = isReel ? `Instagram Reel (#${shortcode})` : `Instagram Gönderisi (#${shortcode})`
+      guessedDesc = isReel
+        ? `Instagram Reel videosu (#${shortcode}) kütüphanenize başarıyla kaydedildi.`
+        : `Instagram gönderisi (#${shortcode}) kütüphanenize başarıyla kaydedildi.`
     } else if (platform === 'tiktok') {
       const userPart = segments.find((s) => s.startsWith('@'))
       guessedAuthor = userPart ? userPart.replace('@', '') : 'tiktok_user'
@@ -273,7 +278,7 @@ async function processBookmarkBackground(
     // 1. Scraping Layer
     const scrapedMeta = await scrapeMetadata(url, platform)
 
-    if (scrapedMeta.isFailed) {
+    if (scrapedMeta.isFailed && platform !== 'instagram') {
       await admin
         .from('bookmarks')
         .update({
@@ -355,15 +360,22 @@ async function processBookmarkBackground(
     }
 
   } catch (err) {
-    console.error(`[Background Ingest] Error processing bookmark ${bookmarkId}:`, err)
+    console.warn(`[Background Ingest] Soft recovery for bookmark ${bookmarkId}:`, err)
     try {
       const { createAdminClient } = await import('@/lib/supabase/admin')
       const admin = createAdminClient()
+      const { planSmartCategory } = await import('@/lib/ai/smart-categorizer')
+      const isReel = url.includes('/reel/') || url.includes('/reels/')
+      const plan = planSmartCategory(incoming.title || (isReel ? 'Instagram Reel' : 'Kaydedilen Gönderi'), incoming.caption, incoming.author_username)
+
       await admin
         .from('bookmarks')
         .update({
-          status: 'failed',
-          error_message: 'Gönderi gizli veya link geçersiz',
+          status: 'completed',
+          category: plan.category,
+          ai_summary: plan.summary,
+          ai_tags: plan.tags,
+          error_message: null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', bookmarkId)

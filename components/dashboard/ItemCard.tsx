@@ -34,6 +34,16 @@ interface Extractors {
   [key: string]: boolean | undefined
 }
 
+function safeEncodeURIComponent(str: string | null | undefined): string {
+  if (!str) return ''
+  try {
+    const sanitized = str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    return encodeURIComponent(sanitized)
+  } catch {
+    return encodeURIComponent(str.replace(/[^\x00-\x7F]/g, ''))
+  }
+}
+
 export interface ItemCardData {
   id: string
   url: string
@@ -140,8 +150,8 @@ export default function ItemCard({
   // Location query for Google Maps action
   const firstLocation = travelLocations[0]
   const mapsSearchUrl = firstLocation
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(firstLocation.maps_query || `${firstLocation.name} ${firstLocation.city || ''}`)}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.title || 'Mekan')}`
+    ? `https://www.google.com/maps/search/?api=1&query=${safeEncodeURIComponent(firstLocation.maps_query || `${firstLocation.name} ${firstLocation.city || ''}`)}`
+    : `https://www.google.com/maps/search/?api=1&query=${safeEncodeURIComponent(item.title || 'Mekan')}`
 
   return (
     <article

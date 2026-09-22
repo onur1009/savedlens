@@ -55,6 +55,16 @@ interface ItemDetailModalProps {
   userCollections?: CollectionOption[]
 }
 
+function safeEncodeURIComponent(str: string | null | undefined): string {
+  if (!str) return ''
+  try {
+    const sanitized = str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    return encodeURIComponent(sanitized)
+  } catch {
+    return encodeURIComponent(str.replace(/[^\x00-\x7F]/g, ''))
+  }
+}
+
 const PLATFORM_COLORS: Record<string, string> = {
   instagram: '#E1306C',
   tiktok: '#69C9D0',
@@ -971,7 +981,7 @@ function ItemDetailModalContent({
                         {travelLocations.length > 0 ? (
                           <div className="space-y-1.5">
                             {travelLocations.map((loc, idx) => {
-                              const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc.maps_query || `${loc.name} ${loc.city || ''}`)}`
+                              const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${safeEncodeURIComponent(loc.maps_query || `${loc.name} ${loc.city || ''}`)}`
                               return (
                                 <div
                                   key={idx}
@@ -1000,7 +1010,7 @@ function ItemDetailModalContent({
                               Keşfedilen lokasyonu Google Maps üzerinde arayın.
                             </p>
                             <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(cleanTitle)}`}
+                              href={`https://www.google.com/maps/search/?api=1&query=${safeEncodeURIComponent(cleanTitle)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 shadow-md transition-colors"

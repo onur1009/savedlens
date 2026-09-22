@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import type { SavedItem } from '@/lib/mock-data'
-import FilterBar from './FilterBar'
+import FilterBar, { type SortOption } from './FilterBar'
 import LibraryGrid from './LibraryGrid'
 import QuickSaveBar from './QuickSaveBar'
 import ItemDetailModal from './ItemDetailModal'
@@ -49,6 +49,16 @@ function getStem(token: string): string {
   return token.replace(/(li|lı|lu|lü|lerin|ların|ler|lar|den|dan|de|da|nin|nın|in|ın|i|ı|e|a)$/, '')
 }
 
+function safeEncodeURIComponent(str: string | null | undefined): string {
+  if (!str) return ''
+  try {
+    const sanitized = str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+    return encodeURIComponent(sanitized)
+  } catch {
+    return encodeURIComponent(str.replace(/[^\x00-\x7F]/g, ''))
+  }
+}
+
 interface DashboardExplorerProps {
   initialItems: SavedItem[]
   userCollections?: CollectionOption[]
@@ -88,6 +98,7 @@ export default function DashboardExplorer({
   const [userStarred, setUserStarred] = useState<boolean | null>(null)
   const [userCollectionId, setUserCollectionId] = useState<string | null>(null)
   const [userTags, setUserTags] = useState<string[] | null>(null)
+  const [sortBy, setSortBy] = useState<SortOption>('newest')
 
   const selectedPlatform = userPlatform ?? (
     urlPlatform
@@ -165,7 +176,7 @@ export default function DashboardExplorer({
     const timer = setTimeout(async () => {
       setIsSearchingSemantic(true)
       try {
-        const res = await fetch(`/api/v1/search/semantic?q=${encodeURIComponent(searchQuery.trim())}`)
+        const res = await fetch(`/api/v1/search/semantic?q=${safeEncodeURIComponent(searchQuery.trim())}`)
         if (res.ok) {
           const data = await res.json()
           if (isMounted && Array.isArray(data.items)) {
@@ -189,7 +200,7 @@ export default function DashboardExplorer({
   const filteredItems = useMemo(() => {
     const baseList = isSemanticSearch && semanticResults !== null ? semanticResults : items
 
-    return baseList.filter((item) => {
+    const filtered = baseList.filter((item) => {
       // 1. Reels Filter
       if (selectedPlatform === 'reels') {
         const isReel =
@@ -297,6 +308,38 @@ export default function DashboardExplorer({
 
       return true
     })
+
+    // 8. Sorting System (newest, oldest, popular/views, title A-Z, title Z-A)
+    const sorted = [...filtered]
+    if (sortBy === 'oldest') {
+      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    } else if (sortBy === 'popular') {
+      sorted.sort((a, b) => {
+        const actA = (a.actionable_data || {}) as Record<string, unknown>
+        const actB = (b.actionable_data || {}) as Record<string, unknown>
+        const scoreA =
+          (typeof actA.views === 'number' ? actA.views : 0) +
+          (typeof actA.likes === 'number' ? actA.likes : 0) +
+          (a.starred ? 100000 : 0) +
+          (a.media_type === 'video' || a.url?.includes('/reel') ? 50000 : 0) +
+          Object.keys(a.extractors || {}).length * 10000
+        const scoreB =
+          (typeof actB.views === 'number' ? actB.views : 0) +
+          (typeof actB.likes === 'number' ? actB.likes : 0) +
+          (b.starred ? 100000 : 0) +
+          (b.media_type === 'video' || b.url?.includes('/reel') ? 50000 : 0) +
+          Object.keys(b.extractors || {}).length * 10000
+        return scoreB - scoreA
+      })
+    } else if (sortBy === 'title_asc') {
+      sorted.sort((a, b) => (a.title || '').localeCompare(b.title || '', 'tr'))
+    } else if (sortBy === 'title_desc') {
+      sorted.sort((a, b) => (b.title || '').localeCompare(a.title || '', 'tr'))
+    } else {
+      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    }
+
+    return sorted
   }, [
     items,
     isSemanticSearch,
@@ -307,6 +350,7 @@ export default function DashboardExplorer({
     onlyStarred,
     selectedTags,
     searchQuery,
+    sortBy,
   ])
 
   const categoryCounts = useMemo(() => {
@@ -396,6 +440,7 @@ export default function DashboardExplorer({
     setUserCollectionId(null)
     setUserTags([])
     setUserStarred(false)
+    setSortBy('newest')
     if (urlFilter || searchParams.get('platform') || searchParams.get('tag') || searchParams.get('collection')) {
       router.push('/dashboard')
     }
@@ -423,6 +468,7 @@ export default function DashboardExplorer({
     onlyStarred ||
     selectedTags.length > 0 ||
     isSemanticSearch ||
+    sortBy !== 'newest' ||
     urlFilter
   )
 
@@ -643,6 +689,8 @@ export default function DashboardExplorer({
         onToggleStarred={() => setUserStarred((prev) => (prev !== null ? !prev : !onlyStarred))}
         isSemanticSearch={isSemanticSearch}
         onToggleSemanticSearch={() => setIsSemanticSearch((prev) => !prev)}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
       />
 
       {/* 3. Semantic Search Indicator or Active Filter Banner */}
@@ -679,6 +727,24 @@ export default function DashboardExplorer({
               <span className="px-2 py-0.2 rounded bg-purple-950/80 text-purple-300 border border-purple-700/50 font-semibold flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-purple-400" />
                 Semantik AI Arama
+              </span>
+            )}
+            {sortBy !== 'newest' && (
+              <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/40 font-semibold flex items-center gap-1">
+                <span>
+                  {sortBy === 'oldest' && '⏳ Eskiden Yeniye'}
+                  {sortBy === 'popular' && '🔥 En Çok İzlenenler'}
+                  {sortBy === 'title_asc' && '🔤 A-Z'}
+                  {sortBy === 'title_desc' && '🔤 Z-A'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSortBy('newest')}
+                  className="hover:text-white text-amber-400 p-0.5"
+                  title="Sıralamayı sıfırla"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </span>
             )}
             {selectedPlatform === 'reels' && (

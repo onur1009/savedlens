@@ -18,6 +18,8 @@ interface CollectionOption {
   color: string
 }
 
+export type SortOption = 'newest' | 'oldest' | 'popular' | 'title_asc' | 'title_desc'
+
 interface FilterBarProps {
   searchQuery?: string
   onSearchChange?: (query: string) => void
@@ -34,6 +36,8 @@ interface FilterBarProps {
   onToggleStarred?: () => void
   isSemanticSearch?: boolean
   onToggleSemanticSearch?: () => void
+  sortBy?: SortOption
+  onSortChange?: (sort: SortOption) => void
 }
 
 export default function FilterBar({
@@ -52,6 +56,8 @@ export default function FilterBar({
   onToggleStarred,
   isSemanticSearch = false,
   onToggleSemanticSearch,
+  sortBy = 'newest',
+  onSortChange,
 }: FilterBarProps) {
   const hasFilters = Boolean(
     searchQuery.trim() ||
@@ -60,7 +66,8 @@ export default function FilterBar({
     selectedCollectionId !== null ||
     selectedTags.length > 0 ||
     onlyStarred ||
-    isSemanticSearch
+    isSemanticSearch ||
+    sortBy !== 'newest'
   )
 
   return (
@@ -139,8 +146,31 @@ export default function FilterBar({
         )}
       </div>
 
-      {/* ── Row 2: Category Selector + Platform Pills + Collection Filter Dropdown ── */}
+      {/* ── Row 2: Sort Selector + Category Selector + Platform Pills + Collection Filter Dropdown ── */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+        {/* Sort Selector */}
+        <div className="relative shrink-0">
+          <select
+            value={sortBy}
+            onChange={(e) => onSortChange?.(e.target.value as SortOption)}
+            aria-label="Sıralama Ölçütü"
+            className={`text-xs px-2.5 py-1.5 rounded-lg border font-medium cursor-pointer transition-all outline-none appearance-none pr-6 bg-[var(--bg-surface)] ${
+              sortBy !== 'newest'
+                ? 'border-amber-500 text-amber-300 ring-1 ring-amber-400 font-bold bg-amber-950/30'
+                : 'border-[var(--border)] text-[var(--text-secondary)] hover:text-white'
+            }`}
+          >
+            <option value="newest">🕒 Yeniden Eskiye</option>
+            <option value="oldest">⏳ Eskiden Yeniye</option>
+            <option value="popular">🔥 En Çok İzlenenler & Popüler</option>
+            <option value="title_asc">🔤 A-Z (Başlığa Göre)</option>
+            <option value="title_desc">🔤 Z-A (Başlığa Göre)</option>
+          </select>
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none">
+            ▼
+          </span>
+        </div>
+
         {/* Category Dropdown Selector */}
         <div className="relative shrink-0">
           <select

@@ -3,6 +3,11 @@
  * authors, and thumbnails for Instagram, TikTok, Twitter, YouTube, and Web.
  */
 
+export function sanitizeSurrogates(str: string): string {
+  if (!str) return ''
+  return str.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+}
+
 export function formatBookmarkTitle(
   caption?: string | null,
   permalink?: string,
@@ -43,9 +48,10 @@ export function formatBookmarkTitle(
   const firstLine = lines[0] || clean
 
   if (firstLine.length > 75) {
-    return firstLine.slice(0, 72).trim() + '...'
+    const sliced = firstLine.slice(0, 72)
+    return sanitizeSurrogates(sliced).trim() + '...'
   }
-  return firstLine
+  return sanitizeSurrogates(firstLine)
 }
 
 export function extractRealAuthor(
