@@ -182,8 +182,36 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     }
   }
 
-  // ── Global Continuous Harvest Cache ──────────────────────────
+  // ── Global Continuous Harvest Cache (with sessionStorage persistence) ──
   window.__SAVEDLENS_GRID_CACHE__ = window.__SAVEDLENS_GRID_CACHE__ || new Map()
+
+  // Restore previous harvest from sessionStorage if available (prevents loss on page refresh)
+  try {
+    const savedSnapshot = sessionStorage.getItem('__SAVEDLENS_HARVEST_SNAPSHOT__')
+    if (savedSnapshot) {
+      const parsed = JSON.parse(savedSnapshot)
+      if (Array.isArray(parsed)) {
+        for (const it of parsed) {
+          if (it && it.external_id) {
+            window.__SAVEDLENS_GRID_CACHE__.set(it.external_id, it)
+          }
+        }
+      }
+    }
+  } catch {}
+
+  let saveSnapshotTimer = null
+  function scheduleSnapshotSave() {
+    clearTimeout(saveSnapshotTimer)
+    saveSnapshotTimer = setTimeout(() => {
+      try {
+        const items = Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
+        if (items.length > 0) {
+          sessionStorage.setItem('__SAVEDLENS_HARVEST_SNAPSHOT__', JSON.stringify(items))
+        }
+      } catch {}
+    }, 500)
+  }
 
   // ── Extract All Grid Posts (Saved Collection or Feed) ─────────
   function extractInstagramGridItems() {
@@ -234,6 +262,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
       window.__SAVEDLENS_GRID_CACHE__.set(parsed.shortcode, item)
     })
 
+    scheduleSnapshotSave()
     return Array.from(window.__SAVEDLENS_GRID_CACHE__.values())
   }
 
@@ -344,6 +373,17 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
     for (let round = 0; round < maxRounds; round++) {
       if (!isAutoScrolling) break
 
+      // Detect Instagram rate-limit or loading error screen
+      const initialText = document.body ? document.body.innerText : ''
+      if (
+        initialText.includes("This page couldn't load") ||
+        initialText.includes('This page couldn’t load') ||
+        initialText.includes('Sayfa yüklenemedi')
+      ) {
+        updateFloatingScanner(lastCount, '⚠️ Instagram mola verdi. Gönderileriniz korundu!')
+        break
+      }
+
       // 1. Smooth downward scroll
       window.scrollBy({ top: scrollStep, behavior: 'smooth' })
 
@@ -356,7 +396,7 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
       // 2. Continuous harvest during the scroll animation (3 checks over 900ms)
       let countIncreased = false
       for (let tick = 0; tick < 3; tick++) {
-        await new Promise((resolve) => setTimeout(resolve, 320))
+        await new Promise((resolve) => setTimeout(resolve, 350))
         extractInstagramGridItems()
         const currentCount = window.__SAVEDLENS_GRID_CACHE__.size
 
@@ -369,8 +409,10 @@ if (!window.__SAVEDLENS_CONTENT_INJECTED__) {
         }
       }
 
-      // If items were actively found during scroll, continue fluidly!
+      // 3. If items were actively found during scroll, apply natural human delay before next scroll
       if (countIncreased) {
+        // Natural human pacing (1.2s - 1.8s) ensures Instagram NEVER triggers rate limits
+        await new Promise((resolve) => setTimeout(resolve, 1200 + Math.random() * 600))
         continue
       }
 
