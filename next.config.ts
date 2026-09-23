@@ -11,11 +11,14 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**.fbcdn.net' },
       { protocol: 'https', hostname: '**.tiktokcdn.com' },
       { protocol: 'https', hostname: 'i.ytimg.com' },
+      { protocol: 'https', hostname: '**.googleusercontent.com' },
       { protocol: 'https', hostname: '**.twimg.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },
       // Supabase Storage Buckets
       { protocol: 'https', hostname: '**.supabase.co' },
       { protocol: 'https', hostname: '**.supabase.in' },
+      // General web thumbnails from any bookmarked webpage
+      { protocol: 'https', hostname: '**' },
     ],
   },
   experimental: {

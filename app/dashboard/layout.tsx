@@ -24,11 +24,17 @@ export default async function DashboardLayout({
     },
   }
 
-  const { data: rawCollections } = await supabase
-    .from('collections')
-    .select('*, bookmark_collections(count)')
-    .eq('user_id', user.id)
-    .order('name', { ascending: true })
+  let rawCollections: unknown[] = []
+  try {
+    const res = await supabase
+      .from('collections')
+      .select('*, bookmark_collections(count)')
+      .eq('user_id', user.id)
+      .order('name', { ascending: true })
+    rawCollections = res.data || []
+  } catch (err) {
+    console.error('[DashboardLayout] Koleksiyon yükleme hatası:', err)
+  }
 
   interface RawCol {
     id: string

@@ -23,18 +23,27 @@ export default async function DashboardPage() {
   // Note: embedding and raw_metadata are excluded to avoid sending ~25MB of vector arrays over SSR
   const BOOKMARK_SELECT_FIELDS = 'id, permalink, platform, caption, author_username, author_name, author_avatar, stored_media_urls, media_urls, ai_summary, ai_tags, extractors, is_favorite, created_at, media_type, status, error_message, category, actionable_data, bookmark_collections(collection_id, collections(id, name, color))'
 
-  const [rawBookmarks, collectionsRes] = await Promise.all([
-    fetchAllUserBookmarks<RawBookmarkRow>(
-      supabase,
-      user.id,
-      BOOKMARK_SELECT_FIELDS
-    ),
-    supabase
-      .from('collections')
-      .select('id, name, color, icon')
-      .eq('user_id', user.id)
-      .order('name', { ascending: true }),
-  ])
+  let rawBookmarks: RawBookmarkRow[] = []
+  let rawCollectionsData: unknown[] = []
+
+  try {
+    const [fetchedBookmarks, collectionsRes] = await Promise.all([
+      fetchAllUserBookmarks<RawBookmarkRow>(
+        supabase,
+        user.id,
+        BOOKMARK_SELECT_FIELDS
+      ),
+      supabase
+        .from('collections')
+        .select('id, name, color, icon')
+        .eq('user_id', user.id)
+        .order('name', { ascending: true }),
+    ])
+    rawBookmarks = fetchedBookmarks || []
+    rawCollectionsData = collectionsRes.data || []
+  } catch (fetchErr) {
+    console.error('[DashboardPage] Veri getirme hatası:', fetchErr)
+  }
 
   interface RawCollectionRow {
     id: string
@@ -73,7 +82,7 @@ export default async function DashboardPage() {
     }>
   }
 
-  const userCollections = ((collectionsRes.data as unknown as RawCollectionRow[]) || []).map((c) => ({
+  const userCollections = ((rawCollectionsData as unknown as RawCollectionRow[]) || []).map((c) => ({
     id: c.id,
     name: c.name,
     color: c.color || '#6366f1',

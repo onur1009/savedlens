@@ -506,6 +506,7 @@ function ItemDetailModalContent({
                 src={item.thumbnail_url}
                 alt={cleanTitle}
                 fill
+                unoptimized
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 40vw"
                 onError={() => setImageError(true)}
