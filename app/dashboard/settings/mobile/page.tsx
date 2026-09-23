@@ -27,9 +27,37 @@ export default function MobileSyncSettingsPage() {
   useEffect(() => {
     async function loadUserToken() {
       try {
+        const res = await fetch('/api/v1/tokens')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.activeToken) {
+            setToken(data.activeToken)
+            localStorage.setItem('sl_active_token', data.activeToken)
+            return
+          }
+        }
+        const cached = localStorage.getItem('sl_active_token')
+        if (cached) {
+          setToken(cached)
+          return
+        }
+
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
+          const genRes = await fetch('/api/v1/tokens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: 'Mobile & Telegram Token' }),
+          })
+          if (genRes.ok) {
+            const genData = await genRes.json()
+            if (genData.rawToken) {
+              setToken(genData.rawToken)
+              localStorage.setItem('sl_active_token', genData.rawToken)
+              return
+            }
+          }
           setToken(user.id)
         } else {
           setToken('demo-user-token-offline')

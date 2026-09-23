@@ -5,14 +5,11 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { isSupabaseConfigured, MOCK_SAVED_ITEMS, type SavedItem } from '@/lib/mock-data'
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-savedlens-token, X-Requested-With',
-}
+import { corsHeaders } from '@/lib/cors'
+import { resolveAuthenticatedUserId } from '@/lib/auth/resolve-user'
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 200, headers: CORS_HEADERS })
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, { status: 200, headers: corsHeaders(request) })
 }
 
 interface ChatMessage {
@@ -33,12 +30,26 @@ interface RetrievedBookmark {
 }
 
 export async function POST(request: Request) {
+  const headers = corsHeaders(request)
+
   try {
     const json = await request.json().catch(() => ({}))
     const { message, history = [] } = json
 
     if (!message || typeof message !== 'string') {
-      return NextResponse.json({ error: 'Soru veya mesaj metni gereklidir.' }, { status: 400, headers: CORS_HEADERS })
+      return NextResponse.json({ error: 'Soru veya mesaj metni gereklidir.' }, { status: 400, headers })
+    }
+
+    // Verify authenticated user (SEC-02: prevent leaking other users' bookmarks)
+    const userId = await resolveAuthenticatedUserId(request)
+
+    if (!userId) {
+      return NextResponse.json({
+        success: true,
+        answer: 'Kütüphanenizdeki içeriklere göre yanıt verebilmem için lütfen giriş yapın. Şu an size sadece örnek/demo içeriklerle yanıt verebilirim.',
+        sources: [],
+        offline: true,
+      }, { headers })
     }
 
     const apiKey = process.env.OPENAI_API_KEY
@@ -46,27 +57,19 @@ export async function POST(request: Request) {
 
     let retrievedItems: RetrievedBookmark[] = []
 
-    // 1. If Supabase is configured, retrieve via pgvector / semantic search
+    // 1. If Supabase is configured, retrieve via pgvector / semantic search for verified user
     if (isSupabaseConfigured()) {
       try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
         const admin = createAdminClient()
 
-        let userId = user?.id
-        if (!userId) {
-          const { data: profiles } = await admin.from('profiles').select('id').limit(1)
-          if (profiles && profiles.length > 0) userId = profiles[0].id
-        }
-
-        // Vector search
+        // Vector search scoped strictly to verified userId
         const queryVector = await generateEmbedding(message)
         if (queryVector) {
           const { data: matches, error: rpcError } = await admin.rpc('match_saved_items', {
             query_embedding: queryVector,
             match_threshold: 0.15,
             match_count: 5,
-            p_user_id: userId || null,
+            p_user_id: userId,
           })
 
           if (!rpcError && Array.isArray(matches) && matches.length > 0) {
@@ -84,16 +87,16 @@ export async function POST(request: Request) {
           }
         }
 
-        // Fallback: search by keywords in Supabase
+        // Fallback: search by keywords in Supabase scoped strictly to verified userId
         if (retrievedItems.length === 0) {
           const searchKeywords = message.toLowerCase().split(/\s+/).filter((w: string) => w.length > 3).slice(0, 3)
           let queryBuilder = admin
             .from('bookmarks')
             .select('id, permalink, author_name, author_username, caption, ai_summary, transcript, category, actionable_data, media_urls')
+            .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .limit(5)
 
-          if (userId) queryBuilder = queryBuilder.eq('user_id', userId)
           if (searchKeywords.length > 0) {
             queryBuilder = queryBuilder.ilike('caption', `%${searchKeywords[0]}%`)
           }
@@ -190,7 +193,7 @@ Ses Deşifresi (Transcript): ${item.transcript ? item.transcript.slice(0, 300) :
         answer: offlineAnswer,
         sources: retrievedItems,
         offline: true,
-      }, { headers: CORS_HEADERS })
+      }, { headers })
     }
 
     // 5. Generate RAG Answer with GPT-4o-mini
@@ -242,13 +245,13 @@ TALİMATLAR:
       success: true,
       answer,
       sources: retrievedItems,
-    }, { headers: CORS_HEADERS })
+    }, { headers })
 
   } catch (err) {
     console.error('[Chat API] Error:', err)
     return NextResponse.json(
       { error: 'Yapay zeka asistanı yanıt verirken bir hata oluştu.' },
-      { status: 500, headers: CORS_HEADERS }
+      { status: 500, headers }
     )
   }
 }

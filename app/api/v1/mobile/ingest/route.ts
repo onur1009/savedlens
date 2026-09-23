@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isSupabaseConfigured } from '@/lib/mock-data'
 import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
+import { corsHeaders } from '@/lib/cors'
+import { resolveAuthenticatedUserId } from '@/lib/auth/resolve-user'
 
 const MobileIngestSchema = z.object({
   url: z.string().optional(),
@@ -10,14 +12,8 @@ const MobileIngestSchema = z.object({
   token: z.string().optional(),
 })
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-savedlens-token, X-Requested-With',
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 200, headers: CORS_HEADERS })
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, { status: 200, headers: corsHeaders(request) })
 }
 
 function extractUrlFromText(text?: string | null): string | null {
@@ -27,18 +23,21 @@ function extractUrlFromText(text?: string | null): string | null {
 }
 
 export async function GET(request: Request) {
+  const headers = corsHeaders(request)
   const { searchParams } = new URL(request.url)
   const targetUrl = searchParams.get('url') || searchParams.get('text')
   const token = searchParams.get('token')
 
   if (!targetUrl) {
-    return NextResponse.json({ error: 'Lütfen bir url parametresi belirtin' }, { status: 400, headers: CORS_HEADERS })
+    return NextResponse.json({ error: 'Lütfen bir url parametresi belirtin' }, { status: 400, headers })
   }
 
   return processMobileIngest(targetUrl, token, request)
 }
 
 export async function POST(request: Request) {
+  const headers = corsHeaders(request)
+
   try {
     const json = await request.json().catch(() => ({}))
     const parsed = MobileIngestSchema.safeParse(json)
@@ -48,53 +47,26 @@ export async function POST(request: Request) {
     const targetUrl = bodyUrl || extractUrlFromText(json.text)
 
     if (!targetUrl) {
-      return NextResponse.json({ error: 'Geçerli bir bağlantı veya metin bulunamadı' }, { status: 400, headers: CORS_HEADERS })
+      return NextResponse.json({ error: 'Geçerli bir bağlantı veya metin bulunamadı' }, { status: 400, headers })
     }
 
     return processMobileIngest(targetUrl, bodyToken, request)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Sunucu hatası'
-    return NextResponse.json({ error: message }, { status: 500, headers: CORS_HEADERS })
+    return NextResponse.json({ error: message }, { status: 500, headers })
   }
 }
 
 async function processMobileIngest(rawUrlOrText: string, bodyToken: string | null | undefined, request: Request) {
+  const headers = corsHeaders(request)
   const extractedUrl = extractUrlFromText(rawUrlOrText) || rawUrlOrText
   if (!extractedUrl.startsWith('http')) {
-    return NextResponse.json({ error: 'Geçerli bir http/https URL adresi bulunamadı' }, { status: 400, headers: CORS_HEADERS })
+    return NextResponse.json({ error: 'Geçerli bir http/https URL adresi bulunamadı' }, { status: 400, headers })
   }
 
-  // Resolve user token
-  const authHeader = request.headers.get('authorization') || request.headers.get('x-savedlens-token')
-  const headerToken = authHeader ? authHeader.replace(/^Bearer\s+/i, '').trim() : null
-  const finalToken = headerToken || bodyToken || null
+  // Resolve user authenticated ID strictly without guessing (SEC-01)
+  const userId = await resolveAuthenticatedUserId(request, bodyToken)
 
-  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-  let userId: string | null = null
-
-  const { createAdminClient } = await import('@/lib/supabase/admin')
-  const admin = createAdminClient()
-
-  if (finalToken && finalToken !== 'demo-user-token-offline') {
-    if (UUID_REGEX.test(finalToken)) {
-      userId = finalToken
-    } else {
-      const { data: profile } = await admin.from('profiles').select('id').eq('id', finalToken).single()
-      if (profile?.id) {
-        userId = profile.id
-      }
-    }
-  }
-
-  // Resilient fallback to default profile if online
-  if (!userId && isSupabaseConfigured()) {
-    const { data: profiles } = await admin.from('profiles').select('id').limit(1)
-    if (profiles && profiles.length > 0) {
-      userId = profiles[0].id
-    }
-  }
-
-  // Delegate to main ingest logic via internal API or database insert
   const platform = extractedUrl.includes('instagram.com')
     ? 'instagram'
     : extractedUrl.includes('tiktok.com')
@@ -109,18 +81,24 @@ async function processMobileIngest(rawUrlOrText: string, bodyToken: string | nul
   const realAuthor = extractRealAuthor(rawUrlOrText, platform)
   const cleanTitle = formatBookmarkTitle(rawUrlOrText, extractedUrl, realAuthor.name)
 
-  if (!isSupabaseConfigured() || !userId) {
+  if (!isSupabaseConfigured()) {
     return NextResponse.json({
       success: true,
       offline: true,
       title: cleanTitle,
       message: "SavedLens'e Kaydedildi! 🚀",
       url: extractedUrl,
-    }, { headers: CORS_HEADERS })
+    }, { headers })
   }
 
-  // Ensure profile row exists to satisfy foreign key
-  await admin.from('profiles').upsert({ id: userId }, { onConflict: 'id' }).select('id')
+  if (!userId) {
+    return NextResponse.json({
+      error: 'Bu işlem için geçerli bir SavedLens oturumu veya API tokenı gereklidir. Lütfen SavedLens > Ayarlar > Mobil sayfasından tokenınızı kontrol edin.',
+    }, { status: 401, headers })
+  }
+
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const admin = createAdminClient()
 
   const bookmarkRow = {
     user_id: userId,
@@ -138,22 +116,22 @@ async function processMobileIngest(rawUrlOrText: string, bodyToken: string | nul
     is_favorite: false,
   }
 
-  const { data: dbItem, error } = await admin
+  const { data: dbItem, error: dbErr } = await admin
     .from('bookmarks')
     .upsert(bookmarkRow, { onConflict: 'user_id,permalink' })
-    .select()
+    .select('id, user_id, platform, permalink, caption, created_at')
     .single()
 
-  if (error) {
-    return NextResponse.json({ error: 'Kaydetme hatası: ' + error.message }, { status: 500, headers: CORS_HEADERS })
+  if (dbErr) {
+    console.error('[mobile/ingest] DB Error:', dbErr)
+    return NextResponse.json({ error: 'İçerik kütüphaneye kaydedilemedi' }, { status: 500, headers })
   }
 
   return NextResponse.json({
     success: true,
-    id: dbItem.id,
     title: cleanTitle,
-    author: `@${realAuthor.username}`,
-    message: "SavedLens'e Başarıyla Kaydedildi! 🚀",
+    message: "SavedLens'e Kaydedildi! 🚀",
     url: extractedUrl,
-  }, { headers: CORS_HEADERS })
+    id: dbItem?.id,
+  }, { headers })
 }

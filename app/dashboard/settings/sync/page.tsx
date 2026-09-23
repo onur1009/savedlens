@@ -18,15 +18,44 @@ import { createClient } from '@/lib/supabase/client'
 export default function SyncSettingsPage() {
   const [token, setToken] = useState<string>('')
   const [copied, setCopied] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [testStatus, setTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [testResult, setTestResult] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadUserToken() {
       try {
+        const res = await fetch('/api/v1/tokens')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.activeToken) {
+            setToken(data.activeToken)
+            localStorage.setItem('sl_active_token', data.activeToken)
+            return
+          }
+        }
+        const cached = localStorage.getItem('sl_active_token')
+        if (cached) {
+          setToken(cached)
+          return
+        }
+
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
+          const genRes = await fetch('/api/v1/tokens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label: 'Chrome Extension & Telegram' }),
+          })
+          if (genRes.ok) {
+            const genData = await genRes.json()
+            if (genData.rawToken) {
+              setToken(genData.rawToken)
+              localStorage.setItem('sl_active_token', genData.rawToken)
+              return
+            }
+          }
           setToken(user.id)
         } else {
           setToken('demo-user-token-offline')
@@ -37,6 +66,24 @@ export default function SyncSettingsPage() {
     }
     loadUserToken()
   }, [])
+
+  async function handleGenerateNewToken() {
+    setIsGenerating(true)
+    try {
+      const res = await fetch('/api/v1/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: 'Yenilenen Senkronizasyon Tokenı' }),
+      })
+      const data = await res.json()
+      if (res.ok && data.rawToken) {
+        setToken(data.rawToken)
+        localStorage.setItem('sl_active_token', data.rawToken)
+      }
+    } catch {} finally {
+      setIsGenerating(false)
+    }
+  }
 
   function handleCopyToken() {
     if (!token) return
@@ -142,8 +189,17 @@ export default function SyncSettingsPage() {
             className="flex-1 bg-transparent px-3 py-1 text-xs font-mono text-zinc-300 outline-none select-all"
           />
           <button
+            onClick={handleGenerateNewToken}
+            disabled={isGenerating}
+            className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            title="Yeni bir API tokenı üret"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+            <span>{isGenerating ? 'Üretiliyor...' : 'Yenile'}</span>
+          </button>
+          <button
             onClick={handleCopyToken}
-            className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-light)] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+            className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-light)] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
           >
             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copied ? 'Kopyalandı!' : 'Kopyala'}</span>

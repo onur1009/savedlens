@@ -251,14 +251,12 @@ async function scrapeMetadata(url: string, platform: string): Promise<ScrapedMet
   }
 }
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-savedlens-token, X-Requested-With',
-}
+import { corsHeaders } from '@/lib/cors'
+import { resolveAuthenticatedUserId } from '@/lib/auth/resolve-user'
+import { resolveDirectMediaUrl } from '@/lib/ai/media-resolver'
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 200, headers: CORS_HEADERS })
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, { status: 200, headers: corsHeaders(request) })
 }
 
 /**
@@ -302,11 +300,16 @@ async function processBookmarkBackground(
     const finalMediaType = incoming.media_type || scrapedMeta.media_type || (url.includes('/reel/') ? 'video' : 'image')
     const finalThumbnailList = finalThumb ? [finalThumb] : []
 
-    // 2. Whisper Audio Transcription if Reel/Video
+    // 2. Whisper Audio Transcription if Reel/Video with verified downloadable media (SEC-05)
     let transcriptText: string | null = null
     if (finalMediaType === 'video' || url.includes('/reel/')) {
-      const whisperResult = await transcribeAudioFromVideo(finalThumb || url, finalTitle)
-      transcriptText = whisperResult.transcript
+      const directMediaUrl = await resolveDirectMediaUrl(url, platform)
+      if (directMediaUrl) {
+        const whisperResult = await transcribeAudioFromVideo(directMediaUrl, finalTitle)
+        transcriptText = whisperResult.transcript
+      } else {
+        console.warn(`[Ingest] Reel için indirilebilir doğrudan medya bulunamadı, transkripsiyon atlanıyor: ${url}`)
+      }
     }
 
     // 3. Category & Structured Data Extraction
@@ -385,13 +388,15 @@ async function processBookmarkBackground(
 
 // ── POST /api/ingest ────────────────────────────────────────────
 export async function POST(request: Request) {
+  const headers = corsHeaders(request)
+
   try {
-    const body = await request.json()
+    const body = await request.json().catch(() => ({}))
     const parsed = IngestSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: parsed.error.issues[0].message },
-        { status: 400, headers: CORS_HEADERS }
+        { status: 400, headers }
       )
     }
 
@@ -431,81 +436,21 @@ export async function POST(request: Request) {
         offline: true,
         title: simulatedItem.title,
         item: simulatedItem,
-      }, { headers: CORS_HEADERS })
+      }, { headers })
     }
 
-    // Online mode: verify auth
-    const { createClient } = await import('@/lib/supabase/server')
+    // Online mode: verify auth strictly without guessing (SEC-01)
+    const userId = await resolveAuthenticatedUserId(request)
+
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Bu işlem için giriş yapmanız veya geçerli bir SavedLens API tokenı sağlamanız gerekiyor.' },
+        { status: 401, headers }
+      )
+    }
+
     const { createAdminClient } = await import('@/lib/supabase/admin')
-
-    let userId: string | null = null
-    const clientSupabase = await createClient()
-
-    // 1. Check Bearer / Token header (Extension or API calls)
-    const authHeader = request.headers.get('authorization') || request.headers.get('x-savedlens-token')
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-    if (authHeader) {
-      const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-      if (token && token !== 'demo-user-token-offline') {
-        if (UUID_REGEX.test(token)) {
-          userId = token
-        } else {
-          const admin = createAdminClient()
-          const { data: profile } = await admin.from('profiles').select('id').eq('id', token).single()
-          if (profile?.id) {
-            userId = profile.id
-          }
-        }
-      }
-    }
-
-    // 2. If no token header, check standard session cookies
-    if (!userId) {
-      const { data: { user } } = await clientSupabase.auth.getUser()
-      if (user) {
-        userId = user.id
-      }
-    }
-
-    // 3. Resilient fallback: active library owner
-    if (!userId) {
-      try {
-        const admin = createAdminClient()
-        const { data: mainProf } = await admin
-          .from('profiles')
-          .select('id')
-          .ilike('email', '%onur%')
-          .maybeSingle()
-        if (mainProf?.id) {
-          userId = mainProf.id
-        } else {
-          const { data: activeBm } = await admin
-            .from('bookmarks')
-            .select('user_id')
-            .not('user_id', 'is', null)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          if (activeBm?.user_id) {
-            userId = activeBm.user_id
-          } else {
-            const { data: profiles } = await admin.from('profiles').select('id').limit(1)
-            if (profiles && profiles.length > 0) userId = profiles[0].id
-          }
-        }
-      } catch {}
-    }
-
-    // 4. If still no user, use default local user so saving never fails
-    if (!userId) {
-      userId = '00000000-0000-0000-0000-000000000001'
-    }
-
     const admin = createAdminClient()
-    try {
-      await admin.from('profiles').upsert({ id: userId, email: 'user@savedlens.app' }, { onConflict: 'id' })
-    } catch {}
 
     // 5. Create Draft Card with status: 'processing' immediately
     const draftRow = {
@@ -553,7 +498,7 @@ export async function POST(request: Request) {
         message: 'İçerik kuyruğa alındı ve işleniyor.',
         title: initialTitle,
         item: fallbackItem,
-      }, { headers: CORS_HEADERS })
+      }, { headers })
     }
 
     // 5. Fire asynchronous background worker (Job) without blocking the response!
@@ -586,10 +531,10 @@ export async function POST(request: Request) {
       message: 'İçerik kuyruğa alındı ve işleniyor.',
       title: initialTitle,
       item: initialItem,
-    }, { headers: CORS_HEADERS })
+    }, { headers })
 
   } catch (err) {
     console.error('[ingest] Unexpected error:', err)
-    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500, headers: CORS_HEADERS })
+    return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500, headers })
   }
 }
