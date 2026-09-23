@@ -538,23 +538,28 @@ export default function DashboardExplorer({
 
     setIsBulkDeleting(true)
     const prevItems = items
+    const isWipingAll = (selectedIds.size >= items.length && !hasActiveFilters) || (selectedIds.size === filteredItems.length && !hasActiveFilters)
 
     // Optimistic removal
-    setItems((prev) => prev.filter((it) => !selectedIds.has(it.id)))
+    setItems((prev) => (isWipingAll ? [] : prev.filter((it) => !selectedIds.has(it.id))))
     setSelectedIds(new Set())
     setShowBulkDeleteModal(false)
-    showToast(`${ids.length} içerik kütüphaneden siliniyor...`)
+    showToast(isWipingAll ? 'Tüm kütüphane temizleniyor...' : `${ids.length} içerik kütüphaneden siliniyor...`)
 
     try {
       const res = await fetch('/api/v1/bookmarks/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete', bookmarkIds: ids }),
+        body: JSON.stringify({
+          action: isWipingAll ? 'delete_all' : 'delete',
+          bookmarkIds: ids,
+          all: isWipingAll,
+        }),
       })
 
       const data = await res.json()
       if (res.ok && data.success) {
-        showToast(`${data.count || ids.length} içerik başarıyla silindi ✓`)
+        showToast(isWipingAll ? 'Tüm kütüphane başarıyla temizlendi ✓' : `${data.count || ids.length} içerik başarıyla silindi ✓`)
       } else {
         setItems(prevItems)
         showToast(data.error || 'Toplu silme başarısız oldu')
@@ -1278,10 +1283,15 @@ export default function DashboardExplorer({
             </div>
             <div className="text-center space-y-1.5">
               <h3 className="text-lg font-bold text-white">
-                {selectedIds.size} İçeriği Silmek İstiyor musunuz?
+                {selectedIds.size >= items.length && !hasActiveFilters
+                  ? `Tüm Kütüphaneyi (${selectedIds.size} İçerik) Silmek İstiyor musunuz?`
+                  : `${selectedIds.size} İçeriği Silmek İstiyor musunuz?`}
               </h3>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Seçilen <strong className="text-white">{selectedIds.size}</strong> içerik kütüphanenizden ve bağlı koleksiyonlardan kalıcı olarak temizlenecektir. Bu işlem geri alınamaz.
+                {selectedIds.size >= items.length && !hasActiveFilters
+                  ? `Kütüphanenizdeki kayıtlı tüm `
+                  : `Seçilen `}
+                <strong className="text-white">{selectedIds.size}</strong> içerik kütüphanenizden ve bağlı koleksiyonlardan kalıcı olarak temizlenecektir. Bu işlem geri alınamaz.
               </p>
             </div>
             <div className="flex items-center gap-3 pt-2">
@@ -1289,7 +1299,7 @@ export default function DashboardExplorer({
                 type="button"
                 onClick={() => setShowBulkDeleteModal(false)}
                 disabled={isBulkDeleting}
-                className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-zinc-300 hover:bg-white/5 transition-all"
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-zinc-300 hover:bg-white/5 transition-all cursor-pointer"
               >
                 Vazgeç
               </button>
@@ -1297,14 +1307,18 @@ export default function DashboardExplorer({
                 type="button"
                 onClick={handleConfirmBulkDelete}
                 disabled={isBulkDeleting}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg shadow-rose-900/40"
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg shadow-rose-900/40 cursor-pointer"
               >
                 {isBulkDeleting ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Trash2 className="w-4 h-4" />
                 )}
-                <span>Evet, Temizle</span>
+                <span>
+                  {selectedIds.size >= items.length && !hasActiveFilters
+                    ? 'Evet, Tümünü Temizle'
+                    : `Evet, ${selectedIds.size} İçeriği Sil`}
+                </span>
               </button>
             </div>
           </div>
