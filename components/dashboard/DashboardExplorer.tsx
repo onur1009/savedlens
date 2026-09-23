@@ -21,6 +21,10 @@ import {
   AlertCircle,
   RotateCw,
   X,
+  Trash2,
+  TrendingUp,
+  Lightbulb,
+  CheckSquare,
 } from 'lucide-react'
 
 interface CollectionOption {
@@ -86,6 +90,18 @@ export default function DashboardExplorer({
     count: number
     message: string
   } | null>(null)
+
+  // Selection & Bulk Action state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [itemToDelete, setItemToDelete] = useState<SavedItem | null>(null)
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [actionToast, setActionToast] = useState<string | null>(null)
+
+  function showToast(msg: string) {
+    setActionToast(msg)
+    setTimeout(() => setActionToast(null), 3500)
+  }
 
   const urlPlatform = searchParams.get('platform')
   const urlFilter = searchParams.get('filter')
@@ -236,9 +252,11 @@ export default function DashboardExplorer({
       if (selectedCategory) {
         if (selectedCategory === 'recipe' && item.category !== 'recipe' && !item.extractors?.recipe) return false
         if (selectedCategory === 'health' && item.category !== 'health' && !item.extractors?.health) return false
+        if (selectedCategory === 'productivity' && item.category !== 'productivity' && !item.extractors?.code) return false
+        if (selectedCategory === 'finance' && item.category !== 'finance') return false
+        if (selectedCategory === 'motivation_mindset' && item.category !== 'motivation_mindset') return false
         if (selectedCategory === 'travel' && item.category !== 'travel' && !item.extractors?.location) return false
         if (selectedCategory === 'product' && item.category !== 'product' && !item.extractors?.discount) return false
-        if (selectedCategory === 'productivity' && item.category !== 'productivity' && !item.extractors?.code) return false
         if (selectedCategory === 'book_movie' && item.category !== 'book_movie') return false
         if (selectedCategory === 'other' && item.category !== 'other') return false
       }
@@ -358,6 +376,8 @@ export default function DashboardExplorer({
       recipe: 0,
       health: 0,
       productivity: 0,
+      finance: 0,
+      motivation_mindset: 0,
       travel: 0,
       product: 0,
       book_movie: 0,
@@ -458,6 +478,123 @@ export default function DashboardExplorer({
   function handleItemDeleted(deletedId: string) {
     setItems((prev) => prev.filter((it) => it.id !== deletedId))
     setSelectedItem(null)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(deletedId)
+      return next
+    })
+  }
+
+  function handleToggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function handleToggleSelectAll() {
+    if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredItems.map((it) => it.id)))
+    }
+  }
+
+  async function handleConfirmSingleDelete() {
+    if (!itemToDelete) return
+    const id = itemToDelete.id
+    const prevItems = items
+
+    setItems((prev) => prev.filter((it) => it.id !== id))
+    setItemToDelete(null)
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    showToast('İçerik kütüphaneden silindi')
+
+    try {
+      const res = await fetch(`/api/v1/bookmarks/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        setItems(prevItems)
+        showToast('Silme işlemi başarısız oldu')
+      }
+    } catch {
+      setItems(prevItems)
+      showToast('Sunucu hatası: İçerik silinemedi')
+    }
+  }
+
+  async function handleConfirmBulkDelete() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    setIsBulkDeleting(true)
+    const prevItems = items
+
+    setItems((prev) => prev.filter((it) => !selectedIds.has(it.id)))
+    setSelectedIds(new Set())
+    setShowBulkDeleteModal(false)
+    showToast(`${ids.length} içerik temizlendi`)
+
+    try {
+      const res = await fetch('/api/v1/bookmarks/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', bookmarkIds: ids }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setItems(prevItems)
+        showToast(data.error || 'Toplu silme başarısız oldu')
+      }
+    } catch {
+      setItems(prevItems)
+      showToast('Bağlantı hatası: İçerikler silinemedi')
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
+
+  async function handleBulkAddToCollection(colId: string) {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    const col = collections.find((c) => c.id === colId)
+    showToast(`${ids.length} içerik "${col?.name || 'Koleksiyona'}" ekleniyor...`)
+
+    try {
+      const res = await fetch('/api/v1/bookmarks/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add_to_collection', bookmarkIds: ids, collectionId: colId }),
+      })
+
+      if (res.ok) {
+        setItems((prev) =>
+          prev.map((it) =>
+            selectedIds.has(it.id)
+              ? {
+                  ...it,
+                  collection_id: colId,
+                  collection_name: col?.name || null,
+                  collection_color: col?.color || null,
+                }
+              : it
+          )
+        )
+        setSelectedIds(new Set())
+        showToast(`${ids.length} içerik başarıyla koleksiyona eklendi`)
+      } else {
+        showToast('Koleksiyona eklenemedi')
+      }
+    } catch {
+      showToast('Koleksiyon bağlantı hatası')
+    }
   }
 
   const hasActiveFilters = Boolean(
@@ -630,6 +767,34 @@ export default function DashboardExplorer({
 
           <button
             type="button"
+            onClick={() => setUserCategory(userCategory === 'finance' ? null : 'finance')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
+              selectedCategory === 'finance'
+                ? 'bg-emerald-500/30 text-emerald-200 border-emerald-500/60 ring-1 ring-emerald-400'
+                : 'bg-zinc-900/60 text-zinc-400 border-white/5 hover:text-emerald-300 hover:border-emerald-500/30'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Finans & Borsa</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 font-bold">{categoryCounts.finance}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setUserCategory(userCategory === 'motivation_mindset' ? null : 'motivation_mindset')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
+              selectedCategory === 'motivation_mindset'
+                ? 'bg-orange-500/30 text-orange-200 border-orange-500/60 ring-1 ring-orange-400'
+                : 'bg-zinc-900/60 text-zinc-400 border-white/5 hover:text-orange-300 hover:border-orange-500/30'
+            }`}
+          >
+            <Lightbulb className="w-3.5 h-3.5 text-orange-400" />
+            <span>Kişisel Gelişim</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-orange-950 text-orange-300 font-bold">{categoryCounts.motivation_mindset}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setUserCategory(userCategory === 'travel' ? null : 'travel')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'travel'
@@ -777,6 +942,9 @@ export default function DashboardExplorer({
       <LibraryGrid
         items={filteredItems}
         onItemClick={(item) => setSelectedItem(item)}
+        selectedIds={selectedIds}
+        onToggleSelect={handleToggleSelect}
+        onDeleteSingle={(item) => setItemToDelete(item)}
       />
 
       {/* 5. Rich Detail & Interactive Categorizer Modal */}
@@ -790,7 +958,164 @@ export default function DashboardExplorer({
         />
       )}
 
-      {/* 6. Floating Global AI Second Brain Chat (Recall Model RAG) */}
+      {/* 6. Floating Bulk Action Bar (When 1+ items selected) */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-zinc-950/90 backdrop-blur-xl border border-white/20 shadow-[0_10px_40px_rgba(0,0,0,0.85)] rounded-2xl p-2.5 px-4 flex items-center gap-3 animate-fade-up max-w-[95vw] overflow-x-auto ring-1 ring-white/10">
+          <div className="flex items-center gap-2 pr-3 border-r border-white/10 shrink-0">
+            <div className="w-5 h-5 rounded-full bg-[var(--accent)] text-white text-[11px] font-bold flex items-center justify-center">
+              {selectedIds.size}
+            </div>
+            <span className="text-xs font-semibold text-white whitespace-nowrap">
+              içerik seçildi
+            </span>
+          </div>
+
+          {/* Toggle Select All */}
+          <button
+            type="button"
+            onClick={handleToggleSelectAll}
+            className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-all whitespace-nowrap cursor-pointer"
+          >
+            {selectedIds.size === filteredItems.length ? 'Seçimi Kaldır' : `Tümünü Seç (${filteredItems.length})`}
+          </button>
+
+          {/* Bulk Assign to Collection Dropdown */}
+          {collections.length > 0 && (
+            <div className="relative shrink-0">
+              <select
+                onChange={(e) => {
+                  if (e.target.value) {
+                    handleBulkAddToCollection(e.target.value)
+                    e.target.value = ''
+                  }
+                }}
+                defaultValue=""
+                className="text-xs px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 font-medium cursor-pointer outline-none transition-all"
+              >
+                <option value="" disabled>📁 Koleksiyona Ekle...</option>
+                {collections.map((col) => (
+                  <option key={col.id} value={col.id} className="bg-zinc-900 text-white">
+                    {col.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Bulk Delete Button */}
+          <button
+            type="button"
+            onClick={() => setShowBulkDeleteModal(true)}
+            disabled={isBulkDeleting}
+            className="px-3 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer disabled:opacity-50"
+          >
+            {isBulkDeleting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="w-3.5 h-3.5" />
+            )}
+            <span>Seçilenleri Sil ({selectedIds.size})</span>
+          </button>
+
+          {/* Cancel Selection */}
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-1 shrink-0"
+            title="Seçimi İptal Et"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* 7. Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#15151e] border border-white/15 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-bold text-white">
+                {selectedIds.size} İçeriği Silmek İstiyor musunuz?
+              </h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Seçilen <strong className="text-white">{selectedIds.size}</strong> içerik kütüphanenizden ve bağlı koleksiyonlardan kalıcı olarak temizlenecektir. Bu işlem geri alınamaz.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={isBulkDeleting}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs font-semibold text-zinc-300 hover:bg-white/5 transition-all"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmBulkDelete}
+                disabled={isBulkDeleting}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all shadow-lg shadow-rose-900/40"
+              >
+                {isBulkDeleting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                <span>Evet, Temizle</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Single Delete Confirmation Modal */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#15151e] border border-white/15 rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-bold text-white">
+                İçeriği Kütüphaneden Sil
+              </h3>
+              <p className="text-xs text-zinc-400 line-clamp-2">
+                &ldquo;{itemToDelete.title || itemToDelete.url}&rdquo; içeriği kütüphanenizden silinecektir.
+              </p>
+            </div>
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="flex-1 py-2 rounded-xl border border-white/10 text-xs font-semibold text-zinc-300 hover:bg-white/5 transition-all"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSingleDelete}
+                className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white flex items-center justify-center gap-1.5 transition-all shadow-md shadow-rose-900/40"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Sil</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. Floating Toast Notification Banner */}
+      {actionToast && (
+        <div className="fixed top-6 right-6 z-50 bg-zinc-900/95 backdrop-blur-md border border-white/20 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2.5 animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{actionToast}</span>
+        </div>
+      )}
+
+      {/* 10. Floating Global AI Second Brain Chat (Recall Model RAG) */}
       <GlobalAIChatModal />
     </div>
   )

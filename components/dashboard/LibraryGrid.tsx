@@ -9,11 +9,20 @@ import ItemCard from './ItemCard'
 interface LibraryGridProps {
   items: SavedItem[]
   onItemClick?: (item: SavedItem) => void
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
+  onDeleteSingle?: (item: SavedItem) => void
 }
 
 const BATCH_SIZE = 32
 
-export default function LibraryGrid({ items, onItemClick }: LibraryGridProps) {
+export default function LibraryGrid({
+  items,
+  onItemClick,
+  selectedIds,
+  onToggleSelect,
+  onDeleteSingle,
+}: LibraryGridProps) {
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
@@ -88,6 +97,9 @@ export default function LibraryGrid({ items, onItemClick }: LibraryGridProps) {
             key={item.id}
             item={item}
             onClick={() => onItemClick?.(item)}
+            isSelected={selectedIds?.has(item.id)}
+            onToggleSelect={() => onToggleSelect?.(item.id)}
+            onDelete={() => onDeleteSingle?.(item)}
           />
         ))}
       </div>

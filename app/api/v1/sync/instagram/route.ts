@@ -150,9 +150,16 @@ export async function GET(request: Request) {
       }
     }
 
+    let userEmail: string | null = null
+    try {
+      const { data: prof } = await admin.from('profiles').select('email').eq('id', userId).maybeSingle()
+      if (prof?.email) userEmail = prof.email
+    } catch {}
+
     return NextResponse.json({
       success: true,
       count: (bms || []).length,
+      userEmail,
       knownShortcodes: Array.from(shortcodesSet),
       latestSavedAt,
       latestShortcode,

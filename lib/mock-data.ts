@@ -19,7 +19,16 @@ export interface Tag {
   count: number
 }
 
-export type BookmarkCategory = 'recipe' | 'travel' | 'book_movie' | 'product' | 'productivity' | 'health' | 'other'
+export type BookmarkCategory =
+  | 'recipe'
+  | 'travel'
+  | 'book_movie'
+  | 'product'
+  | 'productivity'
+  | 'health'
+  | 'finance'
+  | 'motivation_mindset'
+  | 'other'
 
 export interface ActionableRecipeData {
   ingredients: string[]

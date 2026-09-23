@@ -22,6 +22,9 @@ import {
   ShoppingBag,
   HeartPulse,
   BookOpen,
+  Trash2,
+  TrendingUp,
+  Lightbulb,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -83,9 +86,15 @@ const PLATFORM_COLORS: Record<string, string> = {
 export default function ItemCard({
   item,
   onClick,
+  isSelected = false,
+  onToggleSelect,
+  onDelete,
 }: {
   item: ItemCardData
   onClick?: () => void
+  isSelected?: boolean
+  onToggleSelect?: (e: React.MouseEvent) => void
+  onDelete?: (e: React.MouseEvent) => void
 }) {
   const [starred, setStarred] = useState(item.starred ?? false)
   const [imgError, setImgError] = useState(false)
@@ -156,8 +165,10 @@ export default function ItemCard({
   return (
     <article
       onClick={onClick}
-      className={`bg-[#15151e] border card-lift rounded-2xl overflow-hidden group flex flex-col justify-between cursor-pointer transition-all duration-300 ${
-        isProcessing
+      className={`bg-[#15151e] border card-lift rounded-2xl overflow-hidden group relative flex flex-col justify-between cursor-pointer transition-all duration-300 ${
+        isSelected
+          ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]/50 bg-[var(--accent)]/5 shadow-[0_0_25px_var(--accent-glow)]'
+          : isProcessing
           ? 'border-purple-500/40 shadow-[0_0_25px_rgba(168,85,247,0.15)]'
           : isFailed
           ? 'border-rose-800/50 bg-rose-950/10'
@@ -231,8 +242,27 @@ export default function ItemCard({
               onError={() => setImgError(true)}
             />
 
+            {/* Selection Checkbox (Top Left) */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleSelect?.(e)
+              }}
+              className={`absolute top-2.5 left-2.5 z-20 w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${
+                isSelected
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white opacity-100 shadow-md scale-105'
+                  : 'bg-black/65 border-white/40 text-transparent hover:border-white/90 hover:bg-black/85 opacity-0 group-hover:opacity-100'
+              }`}
+              title={isSelected ? 'Seçimi Kaldır' : 'Seç'}
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+            </button>
+
             {/* Platform & Reel Badges */}
-            <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 flex-wrap">
+            <div className={`absolute top-2.5 flex items-center gap-1.5 flex-wrap transition-all ${
+              isSelected ? 'left-10' : 'left-2.5 group-hover:left-10'
+            }`}>
               <span
                 className="px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold tracking-wide shadow-md uppercase"
                 style={{ backgroundColor: platformColor }}
@@ -248,8 +278,23 @@ export default function ItemCard({
               )}
             </div>
 
-            {/* Category / Media type indicator */}
-            <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+            {/* Top Right: Quick Delete Button & Category / Media type indicator */}
+            <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+              {/* Quick Delete Trash Button */}
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(e)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-black/75 hover:bg-rose-600 text-zinc-300 hover:text-white border border-white/20 hover:border-rose-500/50 backdrop-blur-md transition-all shadow-md"
+                  title="Kütüphaneden Sil"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
               {item.category === 'recipe' && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-950/80 backdrop-blur-md text-amber-300 text-[10px] font-bold flex items-center gap-1 border border-amber-500/30">
                   <ChefHat className="w-3 h-3" />
@@ -266,6 +311,18 @@ export default function ItemCard({
                 <span className="px-2 py-0.5 rounded-full bg-indigo-950/80 backdrop-blur-md text-indigo-300 text-[10px] font-bold flex items-center gap-1 border border-indigo-500/30">
                   <Code2 className="w-3 h-3" />
                   <span>Kod & AI</span>
+                </span>
+              )}
+              {item.category === 'finance' && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 backdrop-blur-md text-emerald-300 text-[10px] font-bold flex items-center gap-1 border border-emerald-500/30">
+                  <TrendingUp className="w-3 h-3" />
+                  <span>Finans</span>
+                </span>
+              )}
+              {item.category === 'motivation_mindset' && (
+                <span className="px-2 py-0.5 rounded-full bg-orange-950/80 backdrop-blur-md text-orange-300 text-[10px] font-bold flex items-center gap-1 border border-orange-500/30">
+                  <Lightbulb className="w-3 h-3" />
+                  <span>Gelişim</span>
                 </span>
               )}
               {item.category === 'travel' && (
@@ -324,19 +381,55 @@ export default function ItemCard({
 
         {!isProcessing && !isFailed && (!item.thumbnail_url || imgError) && (
           <div className={`relative w-full ${aspectClass} overflow-hidden bg-gradient-to-br from-indigo-950/40 via-purple-950/20 to-black/60 p-4 flex flex-col justify-between`}>
-            <div className="flex items-center justify-between">
-              <span
-                className="px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold tracking-wide uppercase shadow-md"
-                style={{ backgroundColor: platformColor }}
-              >
-                {item.platform ?? 'Web'}
-              </span>
-              {isReel && (
-                <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold">
-                  Reel
+            {/* Selection Checkbox */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleSelect?.(e)
+              }}
+              className={`absolute top-2.5 left-2.5 z-20 w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${
+                isSelected
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white opacity-100 shadow-md scale-105'
+                  : 'bg-black/65 border-white/40 text-transparent hover:border-white/90 hover:bg-black/85 opacity-0 group-hover:opacity-100'
+              }`}
+              title={isSelected ? 'Seçimi Kaldır' : 'Seç'}
+            >
+              <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+            </button>
+
+            <div className={`flex items-center justify-between transition-all ${
+              isSelected ? 'pl-8' : 'pl-0 group-hover:pl-8'
+            }`}>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold tracking-wide uppercase shadow-md"
+                  style={{ backgroundColor: platformColor }}
+                >
+                  {item.platform ?? 'Web'}
                 </span>
+                {isReel && (
+                  <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                    Reel
+                  </span>
+                )}
+              </div>
+
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(e)
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg bg-black/75 hover:bg-rose-600 text-zinc-300 hover:text-white border border-white/20 hover:border-rose-500/50 backdrop-blur-md transition-all shadow-md z-20"
+                  title="Kütüphaneden Sil"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               )}
             </div>
+
             <div className="text-center py-2">
               <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
                 Kategorize Et & İncele ↗

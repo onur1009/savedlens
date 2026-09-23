@@ -94,10 +94,60 @@ const CATEGORY_TEMPLATES: Record<
       'cursor',
     ],
   },
+  finance_business: {
+    category: 'finance',
+    name: '💰 Finans, Borsa & Girişim',
+    color: '#10b981',
+    icon: 'trending-up',
+    keywords:
+      /\bpara\b|finans|yatırım|yatirim|borsa|hisse|hisseler|kripto|crypto|bitcoin|btc|ethereum|altın|dolar|euro|faiz|enflasyon|fon|pasif gelir|girişim|girisim|girişimcilik|start-up|startup|milyoner|zengin|gelir|bütçe|tasarruf|finansal özgürlük|temettü|portföy|ekonomi|piyasa|fed\b|faiz kararı|bist\b|nasdaq|sp500/i,
+    hashtags: [
+      'finans',
+      'para',
+      'yatirim',
+      'yatırım',
+      'borsa',
+      'hisse',
+      'kripto',
+      'bitcoin',
+      'altin',
+      'girisimcilik',
+      'startup',
+      'pasifgelir',
+      'tasarruf',
+      'ekonomi',
+      'dolar',
+      'temettu',
+    ],
+  },
+  motivation_mindset: {
+    category: 'motivation_mindset',
+    name: '💡 Kişisel Gelişim & Zihin',
+    color: '#f97316',
+    icon: 'lightbulb',
+    keywords:
+      /\bbaşarı\b|basari|motivasyon|özgüven|ozguven|kişisel gelişim|kisisel gelisim|felsefe|stoacılık|stoic|alışkanlık|aliskanlik|disiplin|odaklanma|psikoloji|zihin yapısı|mindset|hedef|kariyer|liderlik|zaman yönetimi|verimli gün|uyanış|farkındalık|mental sağlık|mentor|özsaygı|öz şefkat|irade|atomik alışkanlıklar/i,
+    hashtags: [
+      'motivasyon',
+      'kisiselgelisim',
+      'kişiselgelişim',
+      'basari',
+      'başarı',
+      'disiplin',
+      'mindset',
+      'psikoloji',
+      'felsefe',
+      'aliskanlik',
+      'hedef',
+      'kariyer',
+      'liderlik',
+      'farkindalik',
+    ],
+  },
   health_fitness: {
     category: 'health',
     name: '🩺 Sağlık, Diyet & Fitness',
-    color: '#10b981',
+    color: '#06b6d4',
     icon: 'heart-pulse',
     keywords:
       /doktor|hekim|cerrah|uzm\.?\s*dr|op\.?\s*dr|prof\.?\s*dr|doç\.?\s*dr|dyt\b|diyetisyen|hastane|hospital|klinik|clinic|ameliyat|tedavi|muayene|hastalık|hastalik|sağlık|saglik|botoks|botox|dolgu|estetik|diş hekimi|dermatolog|cildiye|psikolog|psikiyatri|fizik tedavi|diyet\b|kilo\b|zayıfla|kalori|beslenme uzmanı|uzun yaşam|longevity|check-up|tahlil|ultrason|sağlıklı yaşam|saglikli yasam|iç bacak|egzersiz|fitness|antrenman|spor\b|pilates|kardiyo|postür|omurga|fizyoterapi/i,
@@ -252,6 +302,14 @@ function generateIntelligentSummary(
     if (subject) return `${subject} — Kitap, dizi ve film incelemesi.`
     return 'Kitap, dizi ve film önerisi.'
   }
+  if (category === 'finance') {
+    if (subject) return `${subject} — Finans, borsa ve yatırım analizi.`
+    return 'Finans, borsa ve yatırım değerlendirmesi.'
+  }
+  if (category === 'motivation_mindset') {
+    if (subject) return `${subject} — Kişisel gelişim ve motivasyon rehberi.`
+    return 'Kişisel gelişim, üretkenlik ve zihin yapısı.'
+  }
   return subject ? `${subject} kütüphanenizde arşivlendi.` : `${templateName} kategorisinde arşivlendi.`
 }
 
@@ -276,7 +334,7 @@ export function planSmartCategory(
     score += matches.length * 10
 
     for (const h of hashtags) {
-      if (tmpl.hashtags.includes(h)) score += 15
+      if (tmpl.hashtags.includes(h)) score += 20 // 20 points per matching hashtag
     }
     scores[key] = score
   }

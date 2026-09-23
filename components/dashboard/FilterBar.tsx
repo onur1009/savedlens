@@ -185,11 +185,13 @@ export default function FilterBar({
           >
             <option value="">🏷️ Tüm Kategoriler</option>
             <option value="recipe">🍳 Yemek & Tarifler</option>
-            <option value="health">🩺 Sağlık & Doktor</option>
-            <option value="productivity">💻 Yazılım, Kod & AI</option>
-            <option value="travel">📍 Gezi & Mekan</option>
-            <option value="product">🛍️ Ürün & İndirim</option>
-            <option value="book_movie">🎬 Kitap & Dizi</option>
+            <option value="productivity">⚡ Yazılım, Kod & AI</option>
+            <option value="finance">💰 Finans, Borsa & Girişim</option>
+            <option value="motivation_mindset">💡 Kişisel Gelişim & Zihin</option>
+            <option value="health">🩺 Sağlık & Fitness</option>
+            <option value="travel">📍 Gezi & Mekanlar</option>
+            <option value="product">🛍️ Ürün & Fırsatlar</option>
+            <option value="book_movie">📚 Kitap & Sinema</option>
             <option value="other">📌 Diğer</option>
           </select>
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none">

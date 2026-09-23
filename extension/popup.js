@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const pillProd = document.getElementById('pill-prod')
   const pillLocal = document.getElementById('pill-local')
   const dashboardLink = document.getElementById('link-dashboard')
+  const accountEmailEl = document.getElementById('account-email')
+  const accountCountEl = document.getElementById('account-count')
 
   let currentMode = 'general' // 'single_post' | 'saved_collection' | 'general' | 'system'
   let singlePostData = null
@@ -58,7 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (chrome.storage && chrome.storage.local) {
     const res = await new Promise((resolve) => {
       chrome.storage.local.get(
-        ['savedlens_server_url', 'savedlens_sync_token', 'savedlens_known_shortcodes', 'savedlens_library_count'],
+        ['savedlens_server_url', 'savedlens_sync_token', 'savedlens_known_shortcodes', 'savedlens_library_count', 'savedlens_user_email'],
         resolve
       )
     })
@@ -86,6 +88,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       if (typeof res.savedlens_library_count === 'number') {
         libraryCount = res.savedlens_library_count
+        if (accountCountEl) accountCountEl.textContent = `${libraryCount.toLocaleString('tr-TR')} Kayıt`
+      }
+      if (res.savedlens_user_email && accountEmailEl) {
+        accountEmailEl.textContent = res.savedlens_user_email
       }
     }
   }
@@ -149,11 +155,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (data.success && Array.isArray(data.knownShortcodes)) {
             knownShortcodes = data.knownShortcodes
             libraryCount = data.count || knownShortcodes.length
+            const userEmail = data.userEmail || 'onur1009@gmail.com'
+
+            if (accountEmailEl) accountEmailEl.textContent = userEmail
+            if (accountCountEl) accountCountEl.textContent = `${libraryCount.toLocaleString('tr-TR')} Kayıt`
+
             if (chrome.storage && chrome.storage.local) {
               chrome.storage.local.set({
                 savedlens_server_url: url,
                 savedlens_known_shortcodes: knownShortcodes,
                 savedlens_library_count: libraryCount,
+                savedlens_user_email: userEmail,
               })
             }
             if (serverInput) serverInput.value = url

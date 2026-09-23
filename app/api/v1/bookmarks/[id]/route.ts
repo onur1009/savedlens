@@ -9,12 +9,20 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
+    }
+
     const admin = createAdminClient()
 
     const { data: item, error } = await admin
       .from('bookmarks')
       .select('*, bookmark_collections(collection_id, collections(id, name, color))')
       .eq('id', id)
+      .eq('user_id', user.id)
       .single()
 
     if (error || !item) {
@@ -45,6 +53,13 @@ export async function DELETE(
     }
 
     const admin = createAdminClient()
+
+    // Delete associations first
+    await admin
+      .from('bookmark_collections')
+      .delete()
+      .eq('bookmark_id', id)
+
     const { error } = await admin
       .from('bookmarks')
       .delete()
@@ -73,10 +88,13 @@ export async function PATCH(
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Always use admin client to bypass RLS for writes
+    if (!user) {
+      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
+    }
+
     const admin = createAdminClient()
 
-    // Verify bookmark exists
+    // Verify bookmark exists and belongs to the user
     const { data: existingBookmark, error: findError } = await admin
       .from('bookmarks')
       .select('id, user_id')
@@ -87,12 +105,19 @@ export async function PATCH(
       return NextResponse.json({ error: 'İçerik bulunamadı' }, { status: 404 })
     }
 
+    // Check ownership: must be the owner, or claimable if unowned / legacy guest
+    const isOwner = existingBookmark.user_id === user.id
+    const isClaimable = !existingBookmark.user_id || existingBookmark.user_id === '00000000-0000-0000-0000-000000000001'
+
+    if (!isOwner && !isClaimable) {
+      return NextResponse.json({ error: 'Bu içeriği değiştirme yetkiniz yok' }, { status: 403 })
+    }
+
     const updates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
 
-    // Claim bookmark if it had no owner or guest owner and user is logged in
-    if (user && (!existingBookmark.user_id || existingBookmark.user_id === '00000000-0000-0000-0000-000000000001')) {
+    if (isClaimable) {
       updates.user_id = user.id
     }
 

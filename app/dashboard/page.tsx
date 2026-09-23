@@ -20,11 +20,14 @@ export default async function DashboardPage() {
     'Kullanıcı'
 
   // Fetch real bookmarks (with collections join) without 1000 row cap, and user collections in parallel
+  // Note: embedding and raw_metadata are excluded to avoid sending ~25MB of vector arrays over SSR
+  const BOOKMARK_SELECT_FIELDS = 'id, permalink, platform, caption, author_username, author_name, author_avatar, stored_media_urls, media_urls, ai_summary, ai_tags, extractors, is_favorite, created_at, media_type, status, error_message, category, actionable_data, bookmark_collections(collection_id, collections(id, name, color))'
+
   const [rawBookmarks, collectionsRes] = await Promise.all([
     fetchAllUserBookmarks<RawBookmarkRow>(
       supabase,
       user.id,
-      '*, bookmark_collections(collection_id, collections(id, name, color))'
+      BOOKMARK_SELECT_FIELDS
     ),
     supabase
       .from('collections')

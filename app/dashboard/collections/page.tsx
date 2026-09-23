@@ -12,6 +12,8 @@ export default async function CollectionsPage() {
     redirect('/auth/login')
   }
 
+  const BOOKMARK_LIGHT_FIELDS = 'id, user_id, platform, external_id, permalink, author_username, author_name, author_avatar, caption, media_type, media_urls, stored_media_urls, is_favorite, category, status, created_at, updated_at, bookmark_collections(collection_id)'
+
   const [colRes, rawBookmarks] = await Promise.all([
     supabase
       .from('collections')
@@ -21,7 +23,7 @@ export default async function CollectionsPage() {
     fetchAllUserBookmarks<RawDbBookmark>(
       supabase,
       user.id,
-      '*, bookmark_collections(collection_id)'
+      BOOKMARK_LIGHT_FIELDS
     ),
   ])
 
