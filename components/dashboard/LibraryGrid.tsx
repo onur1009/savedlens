@@ -98,6 +98,7 @@ export default function LibraryGrid({
             item={item}
             onClick={() => onItemClick?.(item)}
             isSelected={selectedIds?.has(item.id)}
+            isSelectionMode={Boolean(selectedIds && selectedIds.size > 0)}
             onToggleSelect={() => onToggleSelect?.(item.id)}
             onDelete={() => onDeleteSingle?.(item)}
           />

@@ -25,6 +25,7 @@ import {
   TrendingUp,
   Lightbulb,
   CheckSquare,
+  Star,
 } from 'lucide-react'
 
 interface CollectionOption {
@@ -514,13 +515,16 @@ export default function DashboardExplorer({
       next.delete(id)
       return next
     })
-    showToast('İçerik kütüphaneden silindi')
+    showToast('İçerik siliniyor...')
 
     try {
       const res = await fetch(`/api/v1/bookmarks/${id}`, { method: 'DELETE' })
-      if (!res.ok) {
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast('İçerik başarıyla silindi ✓')
+      } else {
         setItems(prevItems)
-        showToast('Silme işlemi başarısız oldu')
+        showToast(data.error || 'Silme işlemi başarısız oldu')
       }
     } catch {
       setItems(prevItems)
@@ -535,10 +539,11 @@ export default function DashboardExplorer({
     setIsBulkDeleting(true)
     const prevItems = items
 
+    // Optimistic removal
     setItems((prev) => prev.filter((it) => !selectedIds.has(it.id)))
     setSelectedIds(new Set())
     setShowBulkDeleteModal(false)
-    showToast(`${ids.length} içerik temizlendi`)
+    showToast(`${ids.length} içerik kütüphaneden siliniyor...`)
 
     try {
       const res = await fetch('/api/v1/bookmarks/batch', {
@@ -547,8 +552,10 @@ export default function DashboardExplorer({
         body: JSON.stringify({ action: 'delete', bookmarkIds: ids }),
       })
 
-      if (!res.ok) {
-        const data = await res.json()
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast(`${data.count || ids.length} içerik başarıyla silindi ✓`)
+      } else {
         setItems(prevItems)
         showToast(data.error || 'Toplu silme başarısız oldu')
       }
@@ -594,6 +601,88 @@ export default function DashboardExplorer({
       }
     } catch {
       showToast('Koleksiyon bağlantı hatası')
+    }
+  }
+
+  const [isBulkCategorizing, setIsBulkCategorizing] = useState(false)
+
+  const areAllSelectedStarred = useMemo(() => {
+    if (selectedIds.size === 0) return false
+    return Array.from(selectedIds).every((id) => items.find((it) => it.id === id)?.starred)
+  }, [selectedIds, items])
+
+  async function handleBulkToggleFavorite(targetState?: boolean) {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    const shouldFav = targetState !== undefined
+      ? targetState
+      : !areAllSelectedStarred
+
+    setItems((prev) =>
+      prev.map((it) => (selectedIds.has(it.id) ? { ...it, starred: shouldFav } : it))
+    )
+    showToast(`${ids.length} içerik ${shouldFav ? 'favorilere eklendi ★' : 'favorilerden çıkarıldı'}`)
+
+    try {
+      await fetch('/api/v1/bookmarks/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'favorite', bookmarkIds: ids, isFavorite: shouldFav }),
+      })
+    } catch {
+      showToast('Favori güncellenemedi')
+    }
+  }
+
+  async function handleBulkReCategorize() {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+
+    setIsBulkCategorizing(true)
+    showToast(`${ids.length} içerik AI ile analiz ediliyor...`)
+
+    try {
+      const res = await fetch('/api/v1/bookmarks/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'categorize', bookmarkIds: ids }),
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.updatedResults)) {
+          interface UpdatedAIResult {
+            id: string
+            category: string
+            collectionName: string
+          }
+          const resultMap = new Map<string, UpdatedAIResult>(
+            data.updatedResults.map((r: UpdatedAIResult) => [r.id, r])
+          )
+          setItems((prev) =>
+            prev.map((it) => {
+              const updated = resultMap.get(it.id)
+              if (updated) {
+                return {
+                  ...it,
+                  category: updated.category,
+                  collection_name: updated.collectionName,
+                }
+              }
+              return it
+            })
+          )
+        }
+        showToast(`${ids.length} içerik AI ile yeniden sınıflandırıldı! ✨`)
+        setSelectedIds(new Set())
+      } else {
+        showToast('Yapay zeka kategorizasyonunda hata oluştu')
+      }
+    } catch {
+      showToast('Bağlantı hatası: AI kategorizasyonu tamamlanamadı')
+    } finally {
+      setIsBulkCategorizing(false)
     }
   }
 
@@ -938,7 +1027,127 @@ export default function DashboardExplorer({
         </div>
       )}
 
-      {/* 4. Live Responsive Library Grid */}
+      {/* 4. Top Action Toolbar (when items selected) OR Top Selection Trigger */}
+      {selectedIds.size > 0 ? (
+        <div className="sticky top-2 z-30 p-3 sm:p-3.5 rounded-2xl bg-[#141522]/95 backdrop-blur-xl border border-indigo-500/40 shadow-[0_8px_32px_rgba(99,102,241,0.25)] flex flex-wrap items-center justify-between gap-2.5 animate-fade-in ring-1 ring-white/10">
+          {/* Left: Counter & Hepsini Seç */}
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs font-bold shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
+              <span>{selectedIds.size} içerik seçildi</span>
+            </span>
+
+            {/* Hepsini Seç Butonu */}
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white flex items-center gap-1.5 transition-all border border-white/10 cursor-pointer"
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{selectedIds.size === filteredItems.length ? 'Seçimi Kaldır' : `Hepsini Seç (${filteredItems.length})`}</span>
+            </button>
+          </div>
+
+          {/* Right: Eylem Butonları */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* ⭐ Favoriye Ekle / Çıkar */}
+            <button
+              type="button"
+              onClick={() => handleBulkToggleFavorite()}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                areAllSelectedStarred
+                  ? 'bg-amber-500/25 border-amber-500/60 text-amber-200 hover:bg-amber-500/35'
+                  : 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+              }`}
+              title={areAllSelectedStarred ? 'Seçilenleri favorilerden çıkar' : 'Seçilenleri favorilere ekle'}
+            >
+              <Star className={`w-3.5 h-3.5 text-amber-400 ${areAllSelectedStarred ? 'fill-amber-400' : 'fill-amber-400/30'}`} />
+              <span>{areAllSelectedStarred ? 'Favorilerden Çıkar' : 'Favoriye Ekle'}</span>
+            </button>
+
+            {/* ✨ AI ile Yeniden Kategorize Et */}
+            <button
+              type="button"
+              onClick={handleBulkReCategorize}
+              disabled={isBulkCategorizing}
+              className="px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/50 text-purple-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+              title="Seçilen içerikleri yapay zeka ile baştan analiz et ve kategorilere ayır"
+            >
+              {isBulkCategorizing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-300" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+              )}
+              <span>{isBulkCategorizing ? 'AI Ayrıştırıyor...' : selectedIds.size === 1 ? 'AI ile Yeniden Kategorize Et' : `AI ile Yeniden Kategorize Et (${selectedIds.size})`}</span>
+            </button>
+
+            {/* 📁 Koleksiyona Ekle */}
+            {collections.length > 0 && (
+              <div className="relative">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleBulkAddToCollection(e.target.value)
+                      e.target.value = ''
+                    }
+                  }}
+                  defaultValue=""
+                  className="text-xs px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-zinc-200 font-semibold cursor-pointer outline-none transition-all"
+                >
+                  <option value="" disabled className="bg-zinc-900 text-zinc-400">📁 Koleksiyona Ekle...</option>
+                  {collections.map((col) => (
+                    <option key={col.id} value={col.id} className="bg-zinc-900 text-white">
+                      {col.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* 🗑️ Sil */}
+            <button
+              type="button"
+              onClick={() => setShowBulkDeleteModal(true)}
+              disabled={isBulkDeleting}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
+              title="Seçilenleri kütüphaneden sil"
+            >
+              {isBulkDeleting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+              <span>{selectedIds.size === 1 ? 'Sil' : `Sil (${selectedIds.size})`}</span>
+            </button>
+
+            {/* ✕ İptal */}
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-0.5"
+              title="Seçimi Temizle"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between px-1 text-xs text-[var(--text-muted)] -mb-1">
+          <span>{filteredItems.length} içerik listeleniyor</span>
+          {filteredItems.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleSelectAll}
+              className="text-xs font-semibold text-[var(--accent-light)] hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer py-1 px-2.5 rounded-xl hover:bg-white/5 border border-white/5 hover:border-white/15"
+            >
+              <CheckSquare className="w-3.5 h-3.5" />
+              <span>Hepsini Seç ({filteredItems.length})</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 5. Live Responsive Library Grid */}
       <LibraryGrid
         items={filteredItems}
         onItemClick={(item) => setSelectedItem(item)}
@@ -947,7 +1156,7 @@ export default function DashboardExplorer({
         onDeleteSingle={(item) => setItemToDelete(item)}
       />
 
-      {/* 5. Rich Detail & Interactive Categorizer Modal */}
+      {/* 6. Rich Detail & Interactive Categorizer Modal */}
       {selectedItem && (
         <ItemDetailModal
           item={selectedItem}
@@ -958,15 +1167,15 @@ export default function DashboardExplorer({
         />
       )}
 
-      {/* 6. Floating Bulk Action Bar (When 1+ items selected) */}
+      {/* 7. Floating Bulk Action Bar (Bottom Bar - With All Actions) */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-zinc-950/90 backdrop-blur-xl border border-white/20 shadow-[0_10px_40px_rgba(0,0,0,0.85)] rounded-2xl p-2.5 px-4 flex items-center gap-3 animate-fade-up max-w-[95vw] overflow-x-auto ring-1 ring-white/10">
-          <div className="flex items-center gap-2 pr-3 border-r border-white/10 shrink-0">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-zinc-950/95 backdrop-blur-xl border border-white/20 shadow-[0_12px_45px_rgba(0,0,0,0.9)] rounded-2xl p-2.5 px-4 flex items-center gap-2.5 animate-fade-up max-w-[95vw] overflow-x-auto ring-1 ring-white/10">
+          <div className="flex items-center gap-2 pr-2.5 border-r border-white/10 shrink-0">
             <div className="w-5 h-5 rounded-full bg-[var(--accent)] text-white text-[11px] font-bold flex items-center justify-center">
               {selectedIds.size}
             </div>
             <span className="text-xs font-semibold text-white whitespace-nowrap">
-              içerik seçildi
+              seçildi
             </span>
           </div>
 
@@ -974,9 +1183,40 @@ export default function DashboardExplorer({
           <button
             type="button"
             onClick={handleToggleSelectAll}
-            className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-all whitespace-nowrap cursor-pointer"
+            className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white transition-all whitespace-nowrap cursor-pointer shrink-0"
           >
-            {selectedIds.size === filteredItems.length ? 'Seçimi Kaldır' : `Tümünü Seç (${filteredItems.length})`}
+            {selectedIds.size === filteredItems.length ? 'Seçimi Kaldır' : `Hepsini Seç (${filteredItems.length})`}
+          </button>
+
+          {/* ⭐ Favoriye Ekle / Çıkar */}
+          <button
+            type="button"
+            onClick={() => handleBulkToggleFavorite()}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              areAllSelectedStarred
+                ? 'bg-amber-500/30 text-amber-200 hover:bg-amber-500/40'
+                : 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+            }`}
+            title={areAllSelectedStarred ? 'Favorilerden Çıkar' : 'Favoriye Ekle'}
+          >
+            <Star className={`w-3.5 h-3.5 text-amber-400 ${areAllSelectedStarred ? 'fill-amber-400' : 'fill-amber-400/30'}`} />
+            <span>{areAllSelectedStarred ? 'Favoriden Çıkar' : 'Favori'}</span>
+          </button>
+
+          {/* ✨ AI ile Yeniden Kategorize Et */}
+          <button
+            type="button"
+            onClick={handleBulkReCategorize}
+            disabled={isBulkCategorizing}
+            className="px-2.5 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap cursor-pointer shrink-0 disabled:opacity-50"
+            title="Seçilenleri AI ile yeniden analiz edip kategorize et"
+          >
+            {isBulkCategorizing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+            )}
+            <span>{isBulkCategorizing ? 'AI Analiz...' : 'AI Kategorize'}</span>
           </button>
 
           {/* Bulk Assign to Collection Dropdown */}
@@ -990,9 +1230,9 @@ export default function DashboardExplorer({
                   }
                 }}
                 defaultValue=""
-                className="text-xs px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 font-medium cursor-pointer outline-none transition-all"
+                className="text-xs px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-zinc-300 font-medium cursor-pointer outline-none transition-all"
               >
-                <option value="" disabled>📁 Koleksiyona Ekle...</option>
+                <option value="" disabled>📁 Koleksiyon...</option>
                 {collections.map((col) => (
                   <option key={col.id} value={col.id} className="bg-zinc-900 text-white">
                     {col.name}
@@ -1007,21 +1247,21 @@ export default function DashboardExplorer({
             type="button"
             onClick={() => setShowBulkDeleteModal(true)}
             disabled={isBulkDeleting}
-            className="px-3 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer disabled:opacity-50"
+            className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md shrink-0 cursor-pointer disabled:opacity-50"
           >
             {isBulkDeleting ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <Trash2 className="w-3.5 h-3.5" />
             )}
-            <span>Seçilenleri Sil ({selectedIds.size})</span>
+            <span>{selectedIds.size === 1 ? 'Sil' : `Sil (${selectedIds.size})`}</span>
           </button>
 
           {/* Cancel Selection */}
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-1 shrink-0"
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-0.5 shrink-0"
             title="Seçimi İptal Et"
           >
             <X className="w-4 h-4" />

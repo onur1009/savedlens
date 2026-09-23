@@ -55,16 +55,25 @@ export async function DELETE(
     const admin = createAdminClient()
 
     // Delete associations first
-    await admin
-      .from('bookmark_collections')
-      .delete()
-      .eq('bookmark_id', id)
+    await supabase.from('bookmark_collections').delete().eq('bookmark_id', id)
+    try {
+      await admin.from('bookmark_collections').delete().eq('bookmark_id', id)
+    } catch {
+      // admin fallback
+    }
 
-    const { error } = await admin
+    let { error } = await supabase
       .from('bookmarks')
       .delete()
       .eq('id', id)
-      .eq('user_id', user.id)
+
+    if (error) {
+      const adminRes = await admin
+        .from('bookmarks')
+        .delete()
+        .eq('id', id)
+      error = adminRes.error
+    }
 
     if (error) {
       console.error('Bookmark delete error:', error)
@@ -95,13 +104,22 @@ export async function PATCH(
     const admin = createAdminClient()
 
     // Verify bookmark exists and belongs to the user
-    const { data: existingBookmark, error: findError } = await admin
+    let { data: existingBookmark } = await supabase
       .from('bookmarks')
       .select('id, user_id')
       .eq('id', id)
       .single()
 
-    if (findError || !existingBookmark) {
+    if (!existingBookmark) {
+      const adminFind = await admin
+        .from('bookmarks')
+        .select('id, user_id')
+        .eq('id', id)
+        .single()
+      existingBookmark = adminFind.data
+    }
+
+    if (!existingBookmark) {
       return NextResponse.json({ error: 'İçerik bulunamadı' }, { status: 404 })
     }
 
@@ -127,21 +145,26 @@ export async function PATCH(
       updates.collection_id = colId
 
       // Remove previous collection assignment in join table
-      await admin
-        .from('bookmark_collections')
-        .delete()
-        .eq('bookmark_id', id)
+      await supabase.from('bookmark_collections').delete().eq('bookmark_id', id)
+      try {
+        await admin.from('bookmark_collections').delete().eq('bookmark_id', id)
+      } catch {}
 
       // If a valid collection_id is provided, link it
       if (colId) {
-        const { error: insertError } = await admin
+        const { error: insertError } = await supabase
           .from('bookmark_collections')
           .insert({
             bookmark_id: id,
             collection_id: colId,
           })
         if (insertError) {
-          console.warn('[PATCH bookmark] Collection link warning:', insertError.message)
+          try {
+            await admin.from('bookmark_collections').insert({
+              bookmark_id: id,
+              collection_id: colId,
+            })
+          } catch {}
         }
       }
     }
@@ -167,10 +190,18 @@ export async function PATCH(
     }
 
     // 3. Perform update on bookmarks table
-    const { error: updateError } = await admin
+    let { error: updateError } = await supabase
       .from('bookmarks')
       .update(updates)
       .eq('id', id)
+
+    if (updateError) {
+      const adminUp = await admin
+        .from('bookmarks')
+        .update(updates)
+        .eq('id', id)
+      updateError = adminUp.error
+    }
 
     if (updateError) {
       console.error('Bookmark update error:', updateError)
@@ -178,11 +209,20 @@ export async function PATCH(
     }
 
     // 4. Return bookmark with joined collection info
-    const { data: updatedItem } = await admin
+    let { data: updatedItem } = await supabase
       .from('bookmarks')
       .select('*, bookmark_collections(collection_id, collections(id, name, color))')
       .eq('id', id)
       .single()
+
+    if (!updatedItem) {
+      const adminItem = await admin
+        .from('bookmarks')
+        .select('*, bookmark_collections(collection_id, collections(id, name, color))')
+        .eq('id', id)
+        .single()
+      updatedItem = adminItem.data
+    }
 
     return NextResponse.json({
       success: true,

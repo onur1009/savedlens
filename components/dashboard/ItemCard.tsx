@@ -87,12 +87,14 @@ export default function ItemCard({
   item,
   onClick,
   isSelected = false,
+  isSelectionMode = false,
   onToggleSelect,
   onDelete,
 }: {
   item: ItemCardData
   onClick?: () => void
   isSelected?: boolean
+  isSelectionMode?: boolean
   onToggleSelect?: (e: React.MouseEvent) => void
   onDelete?: (e: React.MouseEvent) => void
 }) {
@@ -164,7 +166,13 @@ export default function ItemCard({
 
   return (
     <article
-      onClick={onClick}
+      onClick={(e) => {
+        if (isSelectionMode && onToggleSelect) {
+          onToggleSelect(e)
+        } else {
+          onClick?.()
+        }
+      }}
       className={`bg-[#15151e] border card-lift rounded-2xl overflow-hidden group relative flex flex-col justify-between cursor-pointer transition-all duration-300 ${
         isSelected
           ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]/50 bg-[var(--accent)]/5 shadow-[0_0_25px_var(--accent-glow)]'
@@ -249,19 +257,21 @@ export default function ItemCard({
                 e.stopPropagation()
                 onToggleSelect?.(e)
               }}
-              className={`absolute top-2.5 left-2.5 z-20 w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${
+              className={`absolute top-2.5 left-2.5 z-20 w-7 h-7 rounded-xl border flex items-center justify-center transition-all ${
                 isSelected
-                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white opacity-100 shadow-md scale-105'
-                  : 'bg-black/65 border-white/40 text-transparent hover:border-white/90 hover:bg-black/85 opacity-0 group-hover:opacity-100'
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white opacity-100 shadow-lg scale-105 ring-2 ring-white/30'
+                  : isSelectionMode
+                  ? 'bg-black/80 border-white/60 text-transparent opacity-100 hover:border-white hover:bg-black'
+                  : 'bg-black/65 border-white/40 text-transparent hover:border-white/90 hover:bg-black/85 opacity-0 md:opacity-0 group-hover:opacity-100 max-md:opacity-70'
               }`}
               title={isSelected ? 'Seçimi Kaldır' : 'Seç'}
             >
-              <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+              <Check className="w-4 h-4 stroke-[3] text-white" />
             </button>
 
             {/* Platform & Reel Badges */}
             <div className={`absolute top-2.5 flex items-center gap-1.5 flex-wrap transition-all ${
-              isSelected ? 'left-10' : 'left-2.5 group-hover:left-10'
+              isSelected || isSelectionMode ? 'left-11' : 'left-2.5 group-hover:left-11'
             }`}>
               <span
                 className="px-2.5 py-0.5 rounded-full text-white text-[10px] font-bold tracking-wide shadow-md uppercase"
@@ -388,18 +398,20 @@ export default function ItemCard({
                 e.stopPropagation()
                 onToggleSelect?.(e)
               }}
-              className={`absolute top-2.5 left-2.5 z-20 w-6 h-6 rounded-lg border flex items-center justify-center transition-all ${
+              className={`absolute top-2.5 left-2.5 z-20 w-7 h-7 rounded-xl border flex items-center justify-center transition-all ${
                 isSelected
-                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white opacity-100 shadow-md scale-105'
-                  : 'bg-black/65 border-white/40 text-transparent hover:border-white/90 hover:bg-black/85 opacity-0 group-hover:opacity-100'
+                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white opacity-100 shadow-lg scale-105 ring-2 ring-white/30'
+                  : isSelectionMode
+                  ? 'bg-black/80 border-white/60 text-transparent opacity-100 hover:border-white hover:bg-black'
+                  : 'bg-black/65 border-white/40 text-transparent hover:border-white/90 hover:bg-black/85 opacity-0 md:opacity-0 group-hover:opacity-100 max-md:opacity-70'
               }`}
               title={isSelected ? 'Seçimi Kaldır' : 'Seç'}
             >
-              <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
+              <Check className="w-4 h-4 stroke-[3] text-white" />
             </button>
 
             <div className={`flex items-center justify-between transition-all ${
-              isSelected ? 'pl-8' : 'pl-0 group-hover:pl-8'
+              isSelected || isSelectionMode ? 'pl-9' : 'pl-0 group-hover:pl-9'
             }`}>
               <div className="flex items-center gap-1.5">
                 <span

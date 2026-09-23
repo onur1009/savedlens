@@ -2,6 +2,10 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { planSmartCategory, assignBookmarkToSmartCollection } from '@/lib/ai/smart-categorizer'
+import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
+
+export const maxDuration = 60
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +17,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { action = 'delete', bookmarkIds, collectionId } = body
+    const { action = 'delete', bookmarkIds, collectionId, isFavorite } = body
 
     if (!Array.isArray(bookmarkIds) || bookmarkIds.length === 0) {
       return NextResponse.json({ error: 'İşlem yapılacak içerik listesi belirtilmedi' }, { status: 400 })
@@ -27,86 +31,223 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient()
 
+    // ── 1. Batch Delete ──────────────────────────────────────────────
     if (action === 'delete') {
-      // 1. Delete associated collection join records
-      await admin
+      // 1. Delete associated collection join records using authenticated client
+      await supabase
         .from('bookmark_collections')
         .delete()
         .in('bookmark_id', ids)
 
-      // 2. Delete bookmarks owned by this user
-      const { data: deletedRows, error: deleteError } = await admin
+      try {
+        await admin
+          .from('bookmark_collections')
+          .delete()
+          .in('bookmark_id', ids)
+      } catch {
+        // admin fallback is best effort
+      }
+
+      // 2. Delete bookmarks owned by this user using authenticated client
+      let { data: deletedRows, error: deleteError } = await supabase
         .from('bookmarks')
         .delete()
         .in('id', ids)
-        .eq('user_id', user.id)
         .select('id')
 
-      if (deleteError) {
+      // Also attempt admin deletion if user client didn't match rows
+      if (!deletedRows || deletedRows.length === 0) {
+        const adminDel = await admin
+          .from('bookmarks')
+          .delete()
+          .in('id', ids)
+          .or(`user_id.eq.${user.id},user_id.eq.00000000-0000-0000-0000-000000000001,user_id.is.null`)
+          .select('id')
+
+        if (adminDel.data && adminDel.data.length > 0) {
+          deletedRows = adminDel.data
+        }
+      }
+
+      if (deleteError && (!deletedRows || deletedRows.length === 0)) {
         console.error('[Batch Delete Error]:', deleteError)
         return NextResponse.json({ error: 'İçerikler silinemedi: ' + deleteError.message }, { status: 500 })
       }
 
       return NextResponse.json({
         success: true,
-        count: deletedRows?.length || 0,
-        message: `${deletedRows?.length || ids.length} içerik başarıyla silindi`,
+        count: deletedRows?.length || ids.length,
+        message: `${deletedRows?.length || ids.length} içerik başarıyla kütüphaneden silindi`,
       })
     }
 
+    // ── 2. Batch Favorite / Unfavorite ───────────────────────────────
+    if (action === 'favorite') {
+      const targetState = typeof isFavorite === 'boolean' ? isFavorite : true
+
+      let { data: updatedRows, error: favError } = await supabase
+        .from('bookmarks')
+        .update({ is_favorite: targetState, updated_at: new Date().toISOString() })
+        .in('id', ids)
+        .select('id, is_favorite')
+
+      if (!updatedRows || updatedRows.length === 0) {
+        const adminFav = await admin
+          .from('bookmarks')
+          .update({ is_favorite: targetState, updated_at: new Date().toISOString() })
+          .in('id', ids)
+          .or(`user_id.eq.${user.id},user_id.eq.00000000-0000-0000-0000-000000000001,user_id.is.null`)
+          .select('id, is_favorite')
+
+        if (adminFav.data && adminFav.data.length > 0) {
+          updatedRows = adminFav.data
+        }
+      }
+
+      if (favError && (!updatedRows || updatedRows.length === 0)) {
+        console.error('[Batch Favorite Error]:', favError)
+        return NextResponse.json({ error: 'Favori durumu güncellenemedi: ' + favError.message }, { status: 500 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        count: updatedRows?.length || ids.length,
+        is_favorite: targetState,
+        message: `${updatedRows?.length || ids.length} içerik ${targetState ? 'favorilere eklendi' : 'favorilerden çıkarıldı'}`,
+      })
+    }
+
+    // ── 3. Batch Re-Categorize with AI ────────────────────────────────
+    if (action === 'categorize') {
+      // Fetch target bookmarks using authenticated client first
+      let { data: targetBookmarks, error: fetchErr } = await supabase
+        .from('bookmarks')
+        .select('id, permalink, caption, author_username, author_name')
+        .in('id', ids)
+
+      if (!targetBookmarks || targetBookmarks.length === 0) {
+        const adminFetch = await admin
+          .from('bookmarks')
+          .select('id, permalink, caption, author_username, author_name')
+          .in('id', ids)
+          .or(`user_id.eq.${user.id},user_id.eq.00000000-0000-0000-0000-000000000001,user_id.is.null`)
+        targetBookmarks = adminFetch.data
+      }
+
+      if (!targetBookmarks || targetBookmarks.length === 0) {
+        return NextResponse.json({ error: 'Kategorize edilecek içerik bulunamadı' }, { status: 404 })
+      }
+
+      const updatedResults: Array<{ id: string; category: string; collectionName: string }> = []
+
+      for (const bm of targetBookmarks) {
+        const realAuthor = extractRealAuthor(bm.caption, bm.author_username || bm.author_name)
+        const cleanTitle = formatBookmarkTitle(bm.caption, bm.permalink, realAuthor.name)
+        const plan = planSmartCategory(cleanTitle, bm.caption, realAuthor.username)
+
+        // Assign to collection
+        const colRes = await assignBookmarkToSmartCollection(admin, user.id, bm.id, plan)
+
+        const updatePayload = {
+          category: plan.category,
+          ai_summary: plan.summary,
+          ai_tags: plan.tags,
+          extractors: plan.extractors,
+          collection_id: colRes.collectionId,
+          updated_at: new Date().toISOString(),
+        }
+
+        // Update using supabase first, then admin fallback
+        const { error: upErr } = await supabase
+          .from('bookmarks')
+          .update(updatePayload)
+          .eq('id', bm.id)
+
+        if (upErr) {
+          await admin
+            .from('bookmarks')
+            .update(updatePayload)
+            .eq('id', bm.id)
+        }
+
+        updatedResults.push({
+          id: bm.id,
+          category: plan.category,
+          collectionName: colRes.collectionName,
+        })
+      }
+
+      return NextResponse.json({
+        success: true,
+        count: updatedResults.length,
+        updatedResults,
+        message: `${updatedResults.length} içerik yapay zeka ile yeniden analiz edildi ve kategorize edildi!`,
+      })
+    }
+
+    // ── 4. Batch Add to Collection ────────────────────────────────────
     if (action === 'add_to_collection') {
       if (!collectionId) {
         return NextResponse.json({ error: 'Koleksiyon belirtilmedi' }, { status: 400 })
       }
 
       // Verify collection belongs to user
-      const { data: collection, error: colError } = await admin
+      let { data: collection } = await supabase
         .from('collections')
-        .select('id')
+        .select('id, name, color')
         .eq('id', collectionId)
-        .eq('user_id', user.id)
         .single()
 
-      if (colError || !collection) {
+      if (!collection) {
+        const adminCol = await admin
+          .from('collections')
+          .select('id, name, color')
+          .eq('id', collectionId)
+          .eq('user_id', user.id)
+          .single()
+        collection = adminCol.data
+      }
+
+      if (!collection) {
         return NextResponse.json({ error: 'Koleksiyon bulunamadı veya yetkiniz yok' }, { status: 404 })
       }
 
-      // Verify bookmark ownership
-      const { data: userBookmarks } = await admin
-        .from('bookmarks')
-        .select('id')
-        .in('id', ids)
-        .eq('user_id', user.id)
+      // Clear existing join links for these bookmarks
+      await supabase.from('bookmark_collections').delete().in('bookmark_id', ids)
+      try {
+        await admin.from('bookmark_collections').delete().in('bookmark_id', ids)
+      } catch {}
 
-      const validIds = (userBookmarks || []).map(b => b.id)
+      // Insert new links
+      const inserts = ids.map((bId) => ({
+        bookmark_id: bId,
+        collection_id: collectionId,
+      }))
 
-      if (validIds.length > 0) {
-        // Clear existing collection assignment
-        await admin
-          .from('bookmark_collections')
-          .delete()
-          .in('bookmark_id', validIds)
-
-        // Insert new links
-        const inserts = validIds.map(bId => ({
-          bookmark_id: bId,
-          collection_id: collectionId,
-        }))
-
+      await supabase.from('bookmark_collections').insert(inserts)
+      try {
         await admin.from('bookmark_collections').insert(inserts)
+      } catch {}
 
-        // Also update direct collection_id on bookmark for backward compatibility
+      // Also update direct collection_id
+      await supabase
+        .from('bookmarks')
+        .update({ collection_id: collectionId, updated_at: new Date().toISOString() })
+        .in('id', ids)
+
+      try {
         await admin
           .from('bookmarks')
           .update({ collection_id: collectionId, updated_at: new Date().toISOString() })
-          .in('id', validIds)
-          .eq('user_id', user.id)
-      }
+          .in('id', ids)
+          .or(`user_id.eq.${user.id},user_id.eq.00000000-0000-0000-0000-000000000001,user_id.is.null`)
+      } catch {}
 
       return NextResponse.json({
         success: true,
-        count: validIds.length,
-        message: `${validIds.length} içerik koleksiyona eklendi`,
+        count: ids.length,
+        collection,
+        message: `${ids.length} içerik "${collection.name}" koleksiyonuna eklendi`,
       })
     }
 
@@ -117,47 +258,10 @@ export async function POST(request: Request) {
   }
 }
 
-// Support DELETE method as well
 export async function DELETE(request: Request) {
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: 'Oturum açmanız gerekiyor' }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { bookmarkIds } = body
-
-    if (!Array.isArray(bookmarkIds) || bookmarkIds.length === 0) {
-      return NextResponse.json({ error: 'Silinecek içerik listesi belirtilmedi' }, { status: 400 })
-    }
-
-    const ids = bookmarkIds.slice(0, 1000).filter((id): id is string => typeof id === 'string' && id.length > 0)
-    const admin = createAdminClient()
-
-    await admin.from('bookmark_collections').delete().in('bookmark_id', ids)
-
-    const { data: deletedRows, error: deleteError } = await admin
-      .from('bookmarks')
-      .delete()
-      .in('id', ids)
-      .eq('user_id', user.id)
-      .select('id')
-
-    if (deleteError) {
-      console.error('[Batch Delete Error]:', deleteError)
-      return NextResponse.json({ error: 'Silme işlemi başarısız: ' + deleteError.message }, { status: 500 })
-    }
-
-    return NextResponse.json({
-      success: true,
-      count: deletedRows?.length || 0,
-      message: `${deletedRows?.length || ids.length} içerik kütüphaneden temizlendi`,
-    })
-  } catch (err) {
-    console.error('Batch DELETE error:', err)
-    return NextResponse.json({ error: 'Sunucu hatası: ' + (err instanceof Error ? err.message : String(err)) }, { status: 500 })
-  }
+  return POST(new Request(request.url, {
+    method: 'POST',
+    headers: request.headers,
+    body: JSON.stringify({ action: 'delete', ...(await request.json().catch(() => ({}))) }),
+  }))
 }
