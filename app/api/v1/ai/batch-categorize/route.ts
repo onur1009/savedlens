@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     for (const b of bookmarks) {
       const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
       const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
-      const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username)
+      const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username, existingCols || [])
       const targetColKey = plan.collectionName.toLowerCase().trim()
 
       plannedBookmarks.push({ b, plan, cleanTitle, targetColKey })

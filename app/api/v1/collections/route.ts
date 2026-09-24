@@ -8,6 +8,7 @@ const CreateCollectionSchema = z.object({
   name: z.string().min(1, 'Koleksiyon adı zorunludur').max(50),
   color: z.string().default('#6366f1'),
   icon: z.string().default('folder'),
+  scanLibrary: z.boolean().default(true),
 })
 
 export async function GET() {
@@ -74,11 +75,13 @@ export async function POST(request: Request) {
 
     const admin = createAdminClient()
     const db = supabase || admin
+    const colName = parsed.data.name.trim()
+
     const { data: collection, error } = await db
       .from('collections')
       .insert({
         user_id: user.id,
-        name: parsed.data.name.trim(),
+        name: colName,
         color: parsed.data.color,
         icon: parsed.data.icon,
       })
@@ -90,7 +93,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Koleksiyon oluşturulamadı: ' + error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, collection })
+    let scannedCount = 0
+    let matchedCount = 0
+    let matchedBookmarkIds: string[] = []
+
+    // Scan entire library and automatically categorize matching bookmarks
+    if (parsed.data.scanLibrary !== false) {
+      try {
+        const { scanLibraryForCollection } = await import('@/lib/ai/collection-matcher')
+        const scanRes = await scanLibraryForCollection(db, user.id, collection.id, colName)
+        scannedCount = scanRes.scannedCount
+        matchedCount = scanRes.matchedCount
+        matchedBookmarkIds = scanRes.matchedBookmarkIds
+      } catch (scanErr) {
+        console.error('[collections POST] Library scan error:', scanErr)
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      collection: {
+        ...collection,
+        count: matchedCount,
+      },
+      scannedCount,
+      matchedCount,
+      matchedBookmarkIds,
+      message: matchedCount > 0
+        ? `"${colName}" kategorisi oluşturuldu! Kütüphanenizdeki ${scannedCount} içerik tarandı ve ${matchedCount} içerik otomatik olarak bu kategoriye eklendi! 🎉`
+        : `"${colName}" kategorisi oluşturuldu. Kütüphanenizdeki ${scannedCount} içerik tarandı ancak henüz eşleşen içerik bulunamadı.`,
+    })
   } catch (err) {
     console.error('[collections POST] Unexpected error:', err)
     return NextResponse.json({ error: 'Sunucu hatası' }, { status: 500 })

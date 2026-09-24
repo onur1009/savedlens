@@ -26,6 +26,8 @@ import {
   Lightbulb,
   CheckSquare,
   Star,
+  Plus,
+  FolderPlus,
 } from 'lucide-react'
 
 interface CollectionOption {
@@ -99,9 +101,114 @@ export default function DashboardExplorer({
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [actionToast, setActionToast] = useState<string | null>(null)
 
+  // Manual Category / Collection Creation & Auto-Scan state
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryColor, setNewCategoryColor] = useState('#6366f1')
+  const [autoScanNewCategory, setAutoScanNewCategory] = useState(true)
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false)
+  const [isRescanningCollection, setIsRescanningCollection] = useState(false)
+
   function showToast(msg: string) {
     setActionToast(msg)
     setTimeout(() => setActionToast(null), 3500)
+  }
+
+  async function handleCreateCategory(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newCategoryName.trim() || isCreatingCategory) return
+
+    setIsCreatingCategory(true)
+    try {
+      const res = await fetch('/api/v1/collections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCategoryName.trim(),
+          color: newCategoryColor,
+          icon: 'folder',
+          scanLibrary: autoScanNewCategory,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.collection) {
+        const createdCol: CollectionOption = {
+          id: data.collection.id,
+          name: data.collection.name,
+          color: data.collection.color || newCategoryColor,
+        }
+        setCollections((prev) => [...prev, createdCol])
+
+        const matchedIds = new Set<string>(data.matchedBookmarkIds || [])
+        if (matchedIds.size > 0) {
+          setItems((prev) =>
+            prev.map((it) =>
+              matchedIds.has(it.id)
+                ? {
+                    ...it,
+                    collection_id: createdCol.id,
+                    collection_name: createdCol.name,
+                    collection_color: createdCol.color,
+                  }
+                : it
+            )
+          )
+        }
+
+        setUserCategory(null)
+        setUserCollectionId(createdCol.id)
+        setShowAddCategoryModal(false)
+        setNewCategoryName('')
+        window.dispatchEvent(new CustomEvent('collections-updated'))
+
+        showToast(
+          data.message ||
+            `✨ "${createdCol.name}" kategorisi oluşturuldu ve ${data.matchedCount || 0} içerik bağlandı!`
+        )
+      } else {
+        showToast(data.error || 'Kategori oluşturulamadı')
+      }
+    } catch (err) {
+      console.error('Kategori oluşturma hatası:', err)
+      showToast('Kategori oluşturulurken bir hata oluştu')
+    } finally {
+      setIsCreatingCategory(false)
+    }
+  }
+
+  async function handleRescanActiveCollection() {
+    if (!selectedCollectionId || isRescanningCollection) return
+    setIsRescanningCollection(true)
+    showToast(`"${activeCollectionName}" için tüm kütüphane taranıyor...`)
+
+    try {
+      const res = await fetch(`/api/v1/collections/${selectedCollectionId}/scan`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const matchedIds = new Set<string>(data.matchedBookmarkIds || [])
+        setItems((prev) =>
+          prev.map((it) =>
+            matchedIds.has(it.id)
+              ? {
+                  ...it,
+                  collection_id: selectedCollectionId,
+                  collection_name: activeCollectionName || it.collection_name,
+                }
+              : it
+          )
+        )
+        window.dispatchEvent(new CustomEvent('collections-updated'))
+        showToast(data.message || `✨ "${activeCollectionName}" yeniden tarandı ve güncellendi!`)
+      } else {
+        showToast(data.error || 'Tarama başarısız oldu')
+      }
+    } catch {
+      showToast('Tarama sırasında bağlantı hatası oluştu')
+    } finally {
+      setIsRescanningCollection(false)
+    }
   }
 
   const urlPlatform = searchParams.get('platform')
@@ -703,7 +810,7 @@ export default function DashboardExplorer({
     urlFilter
   )
 
-  const activeCollectionName = userCollections.find((c) => c.id === selectedCollectionId)?.name
+  const activeCollectionName = collections.find((c) => c.id === selectedCollectionId)?.name
 
   return (
     <div className="flex flex-col gap-3 sm:gap-4">
@@ -928,6 +1035,54 @@ export default function DashboardExplorer({
             <span>Kitap & Dizi</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 font-bold">{categoryCounts.book_movie}</span>
           </button>
+
+          {/* User Custom Collections / Categories */}
+          {collections.map((col) => {
+            const isSelected = selectedCollectionId === col.id
+            const count = items.filter(
+              (it) => it.collection_id === col.id || (it as unknown as { collection_ids?: string[] }).collection_ids?.includes(col.id)
+            ).length
+            return (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => {
+                  if (isSelected) {
+                    setUserCollectionId(null)
+                  } else {
+                    setUserCategory(null)
+                    setUserCollectionId(col.id)
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
+                  isSelected
+                    ? 'bg-indigo-500/30 text-indigo-200 border-indigo-500/60 ring-1 ring-indigo-400'
+                    : 'bg-zinc-900/60 text-zinc-400 border-white/5 hover:text-white hover:border-zinc-700'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: col.color || '#6366f1' }}
+                />
+                <span>{col.name}</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-800 text-zinc-300 font-bold">
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+
+          {/* Quick Add Custom Category Button */}
+          <button
+            type="button"
+            onClick={() => setShowAddCategoryModal(true)}
+            className="px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border shrink-0 bg-gradient-to-r from-purple-500/20 to-indigo-500/20 hover:from-purple-500/30 hover:to-indigo-500/30 text-purple-300 hover:text-white border-purple-500/30 hover:border-purple-500/60 shadow-[0_0_12px_rgba(168,85,247,0.15)] cursor-pointer"
+            title="Manuel kategori ekle ve tüm kütüphaneyi tara"
+          >
+            <Plus className="w-3.5 h-3.5 text-purple-400" />
+            <span>+ Kategori Ekle</span>
+            <Sparkles className="w-3 h-3 text-amber-400 animate-pulse" />
+          </button>
         </div>
       </div>
 
@@ -1012,8 +1167,18 @@ export default function DashboardExplorer({
               </span>
             )}
             {activeCollectionName && (
-              <span className="px-1.5 py-0.2 rounded bg-amber-950/60 text-amber-300 border border-amber-800/50 font-semibold">
-                📁 {activeCollectionName}
+              <span className="px-2 py-0.5 rounded-lg bg-indigo-950/60 text-indigo-300 border border-indigo-800/50 font-semibold flex items-center gap-1.5">
+                <span>📁 {activeCollectionName}</span>
+                <button
+                  type="button"
+                  onClick={handleRescanActiveCollection}
+                  disabled={isRescanningCollection}
+                  className="ml-1 text-[10px] px-2 py-0.5 rounded bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-200 border border-indigo-400/40 flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50"
+                  title="Tüm kütüphaneyi bu kategori için yeniden tara"
+                >
+                  <Sparkles className={`w-3 h-3 ${isRescanningCollection ? 'animate-spin' : ''}`} />
+                  <span>{isRescanningCollection ? 'Taranıyor...' : 'Yeniden Tara'}</span>
+                </button>
               </span>
             )}
             {onlyStarred && (
@@ -1369,7 +1534,125 @@ export default function DashboardExplorer({
         </div>
       )}
 
-      {/* 10. Floating Global AI Second Brain Chat (Recall Model RAG) */}
+      {/* 10. Manual Category Creation & Auto-Scan Modal */}
+      {showAddCategoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md bg-zinc-900 border border-white/10 rounded-2xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                  <Sparkles className="w-5 h-5 text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white">Yeni Kategori Ekle</h3>
+                  <p className="text-xs text-zinc-400">Tüm kütüphanenizi otomatik tarayıp eşleştirin</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCategoryModal(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCategory} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Kategori / Koleksiyon Adı
+                </label>
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="örn: Arabalar, Kahve & Mekanlar, Borsa, Fitness..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-800/80 border border-white/10 text-white placeholder:text-zinc-500 text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition-all"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Renk Seçin
+                </label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    { color: '#6366f1', label: 'Indigo' },
+                    { color: '#ec4899', label: 'Pembe' },
+                    { color: '#10b981', label: 'Yeşil' },
+                    { color: '#f59e0b', label: 'Amber' },
+                    { color: '#3b82f6', label: 'Mavi' },
+                    { color: '#8b5cf6', label: 'Mor' },
+                    { color: '#f43f5e', label: 'Gül' },
+                    { color: '#06b6d4', label: 'Turkuaz' },
+                  ].map((c) => (
+                    <button
+                      key={c.color}
+                      type="button"
+                      onClick={() => setNewCategoryColor(c.color)}
+                      className={`w-7 h-7 rounded-full border-2 transition-transform cursor-pointer ${
+                        newCategoryColor === c.color ? 'scale-110 border-white ring-2 ring-purple-400' : 'border-transparent hover:scale-105'
+                      }`}
+                      style={{ backgroundColor: c.color }}
+                      title={c.label}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-purple-950/30 border border-purple-500/20 space-y-1.5">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoScanNewCategory}
+                    onChange={(e) => setAutoScanNewCategory(e.target.checked)}
+                    className="mt-0.5 rounded border-purple-400 text-purple-600 focus:ring-purple-500 w-4 h-4 bg-zinc-800 cursor-pointer"
+                  />
+                  <div className="text-xs">
+                    <span className="font-semibold text-purple-200">
+                      ✨ Tüm kütüphaneyi tara ve eşleşenleri bu kategoriye topla
+                    </span>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Kütüphanenizdeki {items.length} içerik akıllı Türkçe anlamsal &amp; anahtar kelime eşleştirme motoruyla taranır ve uygun olanlar otomatik eklenir.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCategoryModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newCategoryName.trim() || isCreatingCategory}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 transition-all shadow-lg shadow-purple-500/25 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {isCreatingCategory ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Kütüphane Taranıyor...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Kategori Oluştur ve Tara</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 11. Floating Global AI Second Brain Chat (Recall Model RAG) */}
       <GlobalAIChatModal />
     </div>
   )

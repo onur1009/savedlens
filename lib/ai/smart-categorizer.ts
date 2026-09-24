@@ -320,11 +320,43 @@ function generateIntelligentSummary(
 export function planSmartCategory(
   title: string | null | undefined,
   caption: string | null | undefined,
-  author: string | null | undefined
+  author: string | null | undefined,
+  userCollections?: Array<{ id: string; name: string; color?: string | null; icon?: string | null }>
 ): SmartCategoryPlan {
   const rawText = `${title || ''} ${caption || ''} ${author || ''}`
   const text = rawText.toLowerCase()
   const hashtags = extractHashtags(rawText)
+
+  // 1. Check user's custom collections first!
+  if (userCollections && userCollections.length > 0) {
+    const { calculateCollectionMatchScore } = require('./collection-matcher')
+    let bestUserCol: { col: (typeof userCollections)[0]; score: number } | null = null
+
+    for (const col of userCollections) {
+      const match = calculateCollectionMatchScore(col.name, {
+        title,
+        caption,
+        ai_tags: hashtags,
+      })
+      if (match.isMatch && (!bestUserCol || match.score > bestUserCol.score)) {
+        bestUserCol = { col, score: match.score }
+      }
+    }
+
+    if (bestUserCol && bestUserCol.score >= 25) {
+      const col = bestUserCol.col
+      const mergedTags = Array.from(new Set([col.name.toLowerCase().replace(/[^a-z0-9ğüşıöç]/g, ''), ...hashtags])).filter(Boolean).slice(0, 7)
+      return {
+        category: 'other',
+        collectionName: col.name,
+        collectionColor: col.color || '#6366f1',
+        collectionIcon: col.icon || 'folder',
+        tags: mergedTags.length > 0 ? mergedTags : ['koleksiyon'],
+        summary: generateIntelligentSummary('other', title, caption, col.name),
+        extractors: {},
+      }
+    }
+  }
 
   const scores: Record<string, number> = {}
 
