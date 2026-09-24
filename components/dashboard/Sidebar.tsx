@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
+  Home,
   BookmarkPlus,
   LayoutGrid,
   FolderOpen,
@@ -48,6 +49,7 @@ interface SidebarCollection {
 }
 
 const mainNav = [
+  { href: '/', label: 'Ana Sayfa (Home)', icon: Home },
   { href: '/dashboard', label: 'Tüm Yer İmleri', icon: LayoutGrid, exact: true },
   { href: '/dashboard?platform=instagram', label: 'Instagram Arşivi', icon: InstagramIcon, platformMatch: 'instagram' },
   { href: '/dashboard/collections', label: 'Koleksiyon Yönetimi', icon: FolderOpen },
@@ -125,18 +127,22 @@ export default function Sidebar({ user, initialCollections = [] }: SidebarProps)
       className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r border-[var(--border)] bg-[var(--bg-surface)] z-20"
       aria-label="Sidebar navigation"
     >
-      {/* Logo */}
-      <div className="flex items-center gap-2 px-5 py-5 border-b border-[var(--border)]">
-        <div className="w-8 h-8 rounded-xl bg-[var(--accent)] flex items-center justify-center shadow-[0_0_16px_var(--accent-glow)]">
+      {/* Logo -> Links to Home */}
+      <Link
+        href="/"
+        className="flex items-center gap-2 px-5 py-5 border-b border-[var(--border)] hover:bg-white/5 transition-colors group cursor-pointer"
+        title="Ana Sayfaya Git"
+      >
+        <div className="w-8 h-8 rounded-xl bg-[var(--accent)] group-hover:scale-105 transition-transform flex items-center justify-center shadow-[0_0_16px_var(--accent-glow)]">
           <BookmarkPlus className="w-4 h-4 text-white" />
         </div>
-        <span className="font-bold text-base tracking-tight text-[var(--text-primary)]">
+        <span className="font-bold text-base tracking-tight text-[var(--text-primary)] group-hover:text-white transition-colors">
           SavedLens
         </span>
         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] border border-[var(--border-accent)]">
           V2.0
         </span>
-      </div>
+      </Link>
 
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-1 scrollbar-hide">

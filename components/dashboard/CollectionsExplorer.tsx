@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useRef, useMemo, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
+  Home,
   FolderOpen,
   Plus,
   Layers,
@@ -214,14 +216,25 @@ export default function CollectionsExplorer({
           </p>
         </div>
 
-        <button
-          id="btn-new-collection"
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-sm font-semibold hover:bg-[var(--accent-light)] transition-all shadow-[0_0_16px_var(--accent-glow)] shrink-0 active:scale-95 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Yeni Kategori / Koleksiyon
-        </button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-zinc-900/80 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-white/10 hover:border-purple-500/40 text-sm font-semibold transition-all shadow-sm group cursor-pointer"
+            title="Ana Sayfaya Git"
+          >
+            <Home className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+            <span>Ana Sayfa</span>
+          </Link>
+
+          <button
+            id="btn-new-collection"
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-sm font-semibold hover:bg-[var(--accent-light)] transition-all shadow-[0_0_16px_var(--accent-glow)] shrink-0 active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Yeni Kategori / Koleksiyon
+          </button>
+        </div>
       </div>
 
       {/* Collections Grid */}

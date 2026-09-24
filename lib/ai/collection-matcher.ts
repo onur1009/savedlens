@@ -192,8 +192,25 @@ export function calculateCollectionMatchScore(
 }
 
 /**
- * Scans the user's entire library against a specific collection,
- * links all matching bookmarks into bookmark_collections, and sets collection_id.
+ * Infers a canonical category from the collection name if applicable
+ */
+export function inferCategoryFromCollectionName(collectionName: string): string | null {
+  const norm = normalizeTurkish(collectionName)
+  if (/tarif|yemek|mutfak|tatli|pasta|lezzet|recipe|food|borek|kahve|kafe|asci/i.test(norm)) return 'recipe'
+  if (/saglik|doktor|hekim|hastane|fitness|spor|diyet|beslenme|antrenman|gym/i.test(norm)) return 'health'
+  if (/yazilim|kod|developer|programlama|react|nextjs|python|javascript|yapayzeka|ai|chatgpt|tech/i.test(norm)) return 'productivity'
+  if (/finans|borsa|para|yatirim|kripto|crypto|bitcoin|hisse|temettu|ekonomi|dolar/i.test(norm)) return 'finance'
+  if (/motivasyon|zihin|gelisim|felsefe|psikoloji|mindset|mental|terapi/i.test(norm)) return 'motivation_mindset'
+  if (/gezi|seyahat|mekan|rota|otel|tatil|travel|itinerary|gezgin/i.test(norm)) return 'travel'
+  if (/urun|indirim|firsat|alisveris|moda|kombin|elbise|ayakkabi|stil|product/i.test(norm)) return 'product'
+  if (/kitap|film|dizi|sinema|netflix|roman|yazar|movie|cinema|series/i.test(norm)) return 'book_movie'
+  return null
+}
+
+/**
+ * Scans the user's entire library against a specific collection.
+ * If matching bookmarks were previously in another category/collection,
+ * pulls them out and reassigns them to this new category/collection.
  */
 export async function scanLibraryForCollection(
   supabase: SupabaseClient,
@@ -203,6 +220,7 @@ export async function scanLibraryForCollection(
 ): Promise<{
   scannedCount: number
   matchedCount: number
+  transferredCount: number
   matchedBookmarkIds: string[]
 }> {
   const admin = createAdminClient()
@@ -210,40 +228,46 @@ export async function scanLibraryForCollection(
 
   // 1. Fetch all user bookmarks without 1000 limit
   const { fetchAllUserBookmarks } = await import('@/lib/supabase/fetch-all')
-  const bookmarks = await fetchAllUserBookmarks<BookmarkMatchTarget>(
+  const bookmarks = await fetchAllUserBookmarks<BookmarkMatchTarget & { collection_id?: string | null }>(
     db,
     userId,
-    'id, permalink, caption, ai_summary, ai_tags, category'
+    'id, permalink, caption, ai_summary, ai_tags, category, collection_id'
   )
 
   if (!bookmarks || bookmarks.length === 0) {
-    return { scannedCount: 0, matchedCount: 0, matchedBookmarkIds: [] }
+    return { scannedCount: 0, matchedCount: 0, transferredCount: 0, matchedBookmarkIds: [] }
   }
 
-  // 2. Identify matches
+  // 2. Identify matches and detect transfers from other categories/collections
   const matchedBookmarkIds: string[] = []
+  const mappedCategory = inferCategoryFromCollectionName(collectionName)
+  let transferredCount = 0
 
   for (const bm of bookmarks) {
     const { isMatch } = calculateCollectionMatchScore(collectionName, bm)
     if (isMatch) {
       matchedBookmarkIds.push(bm.id)
+      if (bm.collection_id && bm.collection_id !== collectionId) {
+        transferredCount++
+      } else if (mappedCategory && bm.category && bm.category !== mappedCategory && bm.category !== 'other') {
+        transferredCount++
+      }
     }
   }
 
   if (matchedBookmarkIds.length === 0) {
-    return { scannedCount: bookmarks.length, matchedCount: 0, matchedBookmarkIds: [] }
+    return { scannedCount: bookmarks.length, matchedCount: 0, transferredCount: 0, matchedBookmarkIds: [] }
   }
 
-  // 3. Chunk insert into bookmark_collections (100 items per chunk)
+  // 3. Chunk transfer into new collection (100 items per chunk)
   const CHUNK_SIZE = 100
   for (let i = 0; i < matchedBookmarkIds.length; i += CHUNK_SIZE) {
     const chunk = matchedBookmarkIds.slice(i, i + CHUNK_SIZE)
 
-    // Remove duplicates first
+    // Pull from previous collections in junction table so they belong to this new matching category
     await db
       .from('bookmark_collections')
       .delete()
-      .eq('collection_id', collectionId)
       .in('bookmark_id', chunk)
 
     const inserts = chunk.map((bId) => ({
@@ -257,17 +281,25 @@ export async function scanLibraryForCollection(
       await admin.from('bookmark_collections').insert(inserts)
     }
 
-    // Update collection_id on bookmarks
+    // Update collection_id and category on bookmarks table (moving them from old category/collection)
+    const updatePayload: Record<string, unknown> = {
+      collection_id: collectionId,
+      updated_at: new Date().toISOString(),
+    }
+    if (mappedCategory) {
+      updatePayload.category = mappedCategory
+    }
+
     await db
       .from('bookmarks')
-      .update({ collection_id: collectionId, updated_at: new Date().toISOString() })
+      .update(updatePayload)
       .in('id', chunk)
-      .is('collection_id', null)
   }
 
   return {
     scannedCount: bookmarks.length,
     matchedCount: matchedBookmarkIds.length,
+    transferredCount,
     matchedBookmarkIds,
   }
 }

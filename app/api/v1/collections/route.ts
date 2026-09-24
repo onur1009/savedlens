@@ -95,6 +95,7 @@ export async function POST(request: Request) {
 
     let scannedCount = 0
     let matchedCount = 0
+    let transferredCount = 0
     let matchedBookmarkIds: string[] = []
 
     // Scan entire library and automatically categorize matching bookmarks
@@ -104,11 +105,14 @@ export async function POST(request: Request) {
         const scanRes = await scanLibraryForCollection(db, user.id, collection.id, colName)
         scannedCount = scanRes.scannedCount
         matchedCount = scanRes.matchedCount
+        transferredCount = scanRes.transferredCount
         matchedBookmarkIds = scanRes.matchedBookmarkIds
       } catch (scanErr) {
         console.error('[collections POST] Library scan error:', scanErr)
       }
     }
+
+    const transferNote = transferredCount > 0 ? ` (${transferredCount} içerik diğer kategorilerden buraya taşındı)` : ''
 
     return NextResponse.json({
       success: true,
@@ -118,9 +122,10 @@ export async function POST(request: Request) {
       },
       scannedCount,
       matchedCount,
+      transferredCount,
       matchedBookmarkIds,
       message: matchedCount > 0
-        ? `"${colName}" kategorisi oluşturuldu! Kütüphanenizdeki ${scannedCount} içerik tarandı ve ${matchedCount} içerik otomatik olarak bu kategoriye eklendi! 🎉`
+        ? `"${colName}" kategorisi oluşturuldu! Kütüphanenizdeki ${scannedCount} içerik tarandı, ${matchedCount} içerik bu kategoriye atandı${transferNote}! 🎉`
         : `"${colName}" kategorisi oluşturuldu. Kütüphanenizdeki ${scannedCount} içerik tarandı ancak henüz eşleşen içerik bulunamadı.`,
     })
   } catch (err) {

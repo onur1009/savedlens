@@ -1,5 +1,7 @@
 import { Suspense } from 'react'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Home } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import type { SavedItem } from '@/lib/mock-data'
 import DashboardExplorer from '@/components/dashboard/DashboardExplorer'
@@ -134,6 +136,16 @@ export default async function DashboardPage() {
             {items.length} kayıtlı içerik
           </span>
         </div>
+
+        {/* Home Page Button */}
+        <Link
+          href="/"
+          className="px-3.5 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 hover:border-purple-500/40 text-xs font-semibold text-zinc-300 hover:text-white flex items-center gap-2 transition-all shadow-sm group cursor-pointer"
+          title="SavedLens Ana Sayfasına Git"
+        >
+          <Home className="w-3.5 h-3.5 text-purple-400 group-hover:scale-110 transition-transform" />
+          <span>Ana Sayfa</span>
+        </Link>
       </div>
 
       {/* Interactive Explorer (Unified Search + Quick Categorization + Filters + Grid) */}

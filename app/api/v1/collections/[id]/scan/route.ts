@@ -42,15 +42,19 @@ export async function POST(
       collection.name
     )
 
+    const transferNote = scanResult.transferredCount > 0 ? ` (${scanResult.transferredCount} içerik diğer kategorilerden buraya taşındı)` : ''
+
     return NextResponse.json({
       success: true,
       collectionId: collection.id,
       collectionName: collection.name,
       scannedCount: scanResult.scannedCount,
       matchedCount: scanResult.matchedCount,
+      transferredCount: scanResult.transferredCount,
+      matchedBookmarkIds: scanResult.matchedBookmarkIds,
       message: scanResult.matchedCount > 0
-        ? `"${collection.name}" için kütüphanenizdeki ${scanResult.scannedCount} içerik tarandı ve ${scanResult.matchedCount} içerik bu kategoriye eklendi! 🎉`
-        : `"${collection.name}" için kütüphanenizdeki ${scanResult.scannedCount} içerik tarandı, yeni eşleşen içerik bulunamadı.`,
+        ? `"${collection.name}" için ${scanResult.scannedCount} içerik tarandı, ${scanResult.matchedCount} içerik bu kategoriye atandı${transferNote}! 🎉`
+        : `"${collection.name}" için ${scanResult.scannedCount} içerik tarandı, yeni eşleşen içerik bulunamadı.`,
     })
   } catch (err) {
     console.error('[Collection Scan Route Error]:', err)
