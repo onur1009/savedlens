@@ -252,6 +252,39 @@ export default function DashboardExplorer({
     return userTags !== null ? userTags : (urlTag ? [urlTag] : [])
   }, [userTags, urlTag])
 
+  // Sync when URL query params change (e.g. from Sidebar navigation)
+  useEffect(() => {
+    if (urlFilter) {
+      const mapped =
+        urlFilter === 'code'
+          ? 'productivity'
+          : urlFilter === 'location'
+          ? 'travel'
+          : urlFilter === 'discount'
+          ? 'product'
+          : urlFilter
+      setUserCategory(mapped)
+      setUserCollectionId(null)
+    }
+  }, [urlFilter])
+
+  useEffect(() => {
+    if (urlCollection) {
+      setUserCollectionId(urlCollection)
+      setUserCategory(null)
+    }
+  }, [urlCollection])
+
+  function handleSelectCategory(cat: string) {
+    setUserCollectionId(null)
+    setUserCategory(selectedCategory === cat ? null : cat)
+  }
+
+  function handleSelectCollection(colId: string) {
+    setUserCategory(null)
+    setUserCollectionId(selectedCollectionId === colId ? null : colId)
+  }
+
   // ── Polling for Ingestion Jobs (status === 'processing') ────────
   useEffect(() => {
     const processingList = items.filter((it) => it.status === 'processing')
@@ -435,10 +468,10 @@ export default function DashboardExplorer({
       return true
     })
 
-    // 8. Sorting System (newest, oldest, popular/views, title A-Z, title Z-A)
+    // 8. High-Speed Sorting System (avoids creating thousands of Date objects per sort)
     const sorted = [...filtered]
     if (sortBy === 'oldest') {
-      sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      sorted.sort((a, b) => a.created_at.localeCompare(b.created_at))
     } else if (sortBy === 'popular') {
       sorted.sort((a, b) => {
         const actA = (a.actionable_data || {}) as Record<string, unknown>
@@ -462,7 +495,7 @@ export default function DashboardExplorer({
     } else if (sortBy === 'title_desc') {
       sorted.sort((a, b) => (b.title || '').localeCompare(a.title || '', 'tr'))
     } else {
-      sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      sorted.sort((a, b) => b.created_at.localeCompare(a.created_at))
     }
 
     return sorted
@@ -479,7 +512,8 @@ export default function DashboardExplorer({
     sortBy,
   ])
 
-  const categoryCounts = useMemo(() => {
+  // Precalculate category counts and O(1) collection counts in a single fast pass
+  const { categoryCounts, collectionCountsMap } = useMemo(() => {
     const counts: Record<string, number> = {
       recipe: 0,
       health: 0,
@@ -491,11 +525,24 @@ export default function DashboardExplorer({
       book_movie: 0,
       other: 0,
     }
+    const colMap: Record<string, number> = {}
+
     for (const it of items) {
-      const c = it.category || 'other'
-      counts[c] = (counts[c] || 0) + 1
+      if (it.category === 'recipe' || it.extractors?.recipe) counts.recipe++
+      else if (it.category === 'health' || it.extractors?.health) counts.health++
+      else if (it.category === 'productivity' || it.extractors?.code) counts.productivity++
+      else if (it.category === 'finance') counts.finance++
+      else if (it.category === 'motivation_mindset') counts.motivation_mindset++
+      else if (it.category === 'travel' || it.extractors?.location) counts.travel++
+      else if (it.category === 'product' || it.extractors?.discount) counts.product++
+      else if (it.category === 'book_movie') counts.book_movie++
+      else counts.other++
+
+      if (it.collection_id) {
+        colMap[it.collection_id] = (colMap[it.collection_id] || 0) + 1
+      }
     }
-    return counts
+    return { categoryCounts: counts, collectionCountsMap: colMap }
   }, [items])
 
   async function handleBatchCategorize() {
@@ -926,7 +973,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'recipe' ? null : 'recipe')}
+            onClick={() => handleSelectCategory('recipe')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'recipe'
                 ? 'bg-amber-500/30 text-amber-200 border-amber-500/60 ring-1 ring-amber-400'
@@ -940,7 +987,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'health' ? null : 'health')}
+            onClick={() => handleSelectCategory('health')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'health'
                 ? 'bg-emerald-500/30 text-emerald-200 border-emerald-500/60 ring-1 ring-emerald-400'
@@ -954,7 +1001,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'productivity' ? null : 'productivity')}
+            onClick={() => handleSelectCategory('productivity')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'productivity'
                 ? 'bg-indigo-500/30 text-indigo-200 border-indigo-500/60 ring-1 ring-indigo-400'
@@ -968,7 +1015,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'finance' ? null : 'finance')}
+            onClick={() => handleSelectCategory('finance')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'finance'
                 ? 'bg-emerald-500/30 text-emerald-200 border-emerald-500/60 ring-1 ring-emerald-400'
@@ -982,7 +1029,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'motivation_mindset' ? null : 'motivation_mindset')}
+            onClick={() => handleSelectCategory('motivation_mindset')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'motivation_mindset'
                 ? 'bg-orange-500/30 text-orange-200 border-orange-500/60 ring-1 ring-orange-400'
@@ -996,7 +1043,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'travel' ? null : 'travel')}
+            onClick={() => handleSelectCategory('travel')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'travel'
                 ? 'bg-blue-500/30 text-blue-200 border-blue-500/60 ring-1 ring-blue-400'
@@ -1010,7 +1057,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'product' ? null : 'product')}
+            onClick={() => handleSelectCategory('product')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'product'
                 ? 'bg-pink-500/30 text-pink-200 border-pink-500/60 ring-1 ring-pink-400'
@@ -1024,7 +1071,7 @@ export default function DashboardExplorer({
 
           <button
             type="button"
-            onClick={() => setUserCategory(userCategory === 'book_movie' ? null : 'book_movie')}
+            onClick={() => handleSelectCategory('book_movie')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
               selectedCategory === 'book_movie'
                 ? 'bg-purple-500/30 text-purple-200 border-purple-500/60 ring-1 ring-purple-400'
@@ -1039,21 +1086,12 @@ export default function DashboardExplorer({
           {/* User Custom Collections / Categories */}
           {collections.map((col) => {
             const isSelected = selectedCollectionId === col.id
-            const count = items.filter(
-              (it) => it.collection_id === col.id || (it as unknown as { collection_ids?: string[] }).collection_ids?.includes(col.id)
-            ).length
+            const count = collectionCountsMap[col.id] || 0
             return (
               <button
                 key={col.id}
                 type="button"
-                onClick={() => {
-                  if (isSelected) {
-                    setUserCollectionId(null)
-                  } else {
-                    setUserCategory(null)
-                    setUserCollectionId(col.id)
-                  }
-                }}
+                onClick={() => handleSelectCollection(col.id)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 ${
                   isSelected
                     ? 'bg-indigo-500/30 text-indigo-200 border-indigo-500/60 ring-1 ring-indigo-400'

@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   FolderOpen,
   Plus,
@@ -33,14 +33,21 @@ const PRESET_COLORS = [
   '#14b8a6', // Teal
 ]
 
+const BATCH_SIZE = 24
+
 export default function CollectionsExplorer({
   initialCollections,
   initialBookmarks,
 }: CollectionsExplorerProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlCollection = searchParams.get('collection')
+
   const [collections, setCollections] = useState<Collection[]>(initialCollections)
   const [bookmarks, setBookmarks] = useState<Bookmark[]>(initialBookmarks)
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null)
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(urlCollection)
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [newColName, setNewColName] = useState('')
   const [newColColor, setNewColColor] = useState(PRESET_COLORS[0])
@@ -136,10 +143,44 @@ export default function CollectionsExplorer({
     }
   }
 
+  // Sync URL search params
+  useEffect(() => {
+    if (urlCollection) {
+      setSelectedCollectionId(urlCollection)
+    }
+  }, [urlCollection])
+
+  // Reset pagination when selected collection changes
+  useEffect(() => {
+    setVisibleCount(BATCH_SIZE)
+  }, [selectedCollectionId])
+
   // Filter bookmarks by selected collection
-  const displayedBookmarks = selectedCollectionId
-    ? bookmarks.filter((b) => b.collections?.includes(selectedCollectionId))
-    : bookmarks
+  const displayedBookmarks = useMemo(() => {
+    if (!selectedCollectionId) return []
+    return bookmarks.filter((b) => b.collections?.includes(selectedCollectionId))
+  }, [bookmarks, selectedCollectionId])
+
+  // Infinite Scroll Sentinel Observer
+  useEffect(() => {
+    if (!sentinelRef.current) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, displayedBookmarks.length))
+        }
+      },
+      { rootMargin: '400px' }
+    )
+
+    const el = sentinelRef.current
+    observer.observe(el)
+    return () => observer.unobserve(el)
+  }, [displayedBookmarks.length])
+
+  const visibleBookmarks = useMemo(() => {
+    return displayedBookmarks.slice(0, visibleCount)
+  }, [displayedBookmarks, visibleCount])
 
   const activeCollection = collections.find((c) => c.id === selectedCollectionId)
 
@@ -283,8 +324,36 @@ export default function CollectionsExplorer({
           )}
         </div>
 
-        {displayedBookmarks.length === 0 ? (
-          <div className="glass rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
+        {!selectedCollectionId ? (
+          <div className="glass rounded-2xl p-8 sm:p-12 text-center flex flex-col items-center justify-center gap-3.5 border border-white/10 shadow-lg animate-fade-in">
+            <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.15)]">
+              <Layers className="w-7 h-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white">İçerikleri Görmek İçin Bir Kategori / Koleksiyon Seçin</h3>
+              <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
+                Yukarıdaki panolardan dilediğinize tıklayarak o kategoriye ait içerikleri anında hızlıca listeleyebilirsiniz.
+              </p>
+            </div>
+            {collections.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap justify-center pt-2">
+                {collections.slice(0, 8).map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setSelectedCollectionId(c.id)}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 border border-white/10 text-xs font-semibold text-zinc-300 hover:text-white flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                  >
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                    <span>{c.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-900 text-zinc-400 font-bold">{c.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : displayedBookmarks.length === 0 ? (
+          <div className="glass rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3 animate-fade-in">
             <div className="w-12 h-12 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
               <Layers className="w-6 h-6" />
             </div>
@@ -307,28 +376,44 @@ export default function CollectionsExplorer({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {displayedBookmarks.map((b) => (
-              <ItemCard
-                key={b.id}
-                item={{
-                  id: b.id,
-                  url: b.permalink,
-                  title: b.author_name ? `${b.author_name} (@${b.author_username})` : b.caption.slice(0, 60),
-                  description: b.caption,
-                  thumbnail_url: b.stored_media_urls[0] || b.media_urls[0] || null,
-                  platform: b.platform,
-                  tags: b.ai_tags,
-                  summary: b.ai_summary,
-                  extractors: b.extractors ?? null,
-                  created_at: b.created_at,
-                  author_username: b.author_username,
-                  author_avatar: b.author_avatar,
-                  media_type: b.media_type,
-                  stored_media_urls: b.stored_media_urls,
-                }}
-              />
-            ))}
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 animate-fade-in">
+              {visibleBookmarks.map((b) => (
+                <ItemCard
+                  key={b.id}
+                  item={{
+                    id: b.id,
+                    url: b.permalink,
+                    title: b.author_name ? `${b.author_name} (@${b.author_username})` : b.caption.slice(0, 60),
+                    description: b.caption,
+                    thumbnail_url: b.stored_media_urls[0] || b.media_urls[0] || null,
+                    platform: b.platform,
+                    tags: b.ai_tags,
+                    summary: b.ai_summary,
+                    extractors: b.extractors ?? null,
+                    created_at: b.created_at,
+                    author_username: b.author_username,
+                    author_avatar: b.author_avatar,
+                    media_type: b.media_type,
+                    stored_media_urls: b.stored_media_urls,
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Infinite Scroll Sentinel / Load More */}
+            {visibleCount < displayedBookmarks.length && (
+              <div ref={sentinelRef} className="py-6 flex justify-center items-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, displayedBookmarks.length))}
+                  className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400" />
+                  <span>Daha Fazla Göster ({visibleCount} / {displayedBookmarks.length})</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

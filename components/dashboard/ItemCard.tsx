@@ -26,7 +26,7 @@ import {
   TrendingUp,
   Lightbulb,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, memo } from 'react'
 
 interface Extractors {
   recipe?: boolean
@@ -83,7 +83,12 @@ const PLATFORM_COLORS: Record<string, string> = {
   web: '#7c5cfc',
 }
 
-export default function ItemCard({
+const trDateFormatter = new Intl.DateTimeFormat('tr-TR', {
+  day: 'numeric',
+  month: 'short',
+})
+
+const ItemCard = memo(function ItemCard({
   item,
   onClick,
   isSelected = false,
@@ -122,10 +127,9 @@ export default function ItemCard({
 
   const aspectClass = isReel ? 'aspect-[9/13]' : 'aspect-[16/10]'
 
-  const formattedDate = new Intl.DateTimeFormat('tr-TR', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(item.created_at))
+  const formattedDate = item.created_at
+    ? trDateFormatter.format(new Date(item.created_at))
+    : ''
 
   async function handleToggleStar(e: React.MouseEvent) {
     e.stopPropagation()
@@ -635,4 +639,6 @@ export default function ItemCard({
       </div>
     </article>
   )
-}
+})
+
+export default ItemCard
