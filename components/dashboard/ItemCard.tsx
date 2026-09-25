@@ -106,6 +106,7 @@ const ItemCard = memo(function ItemCard({
   const [starred, setStarred] = useState(item.starred ?? false)
   const [imgError, setImgError] = useState(false)
   const [copiedRecipe, setCopiedRecipe] = useState(false)
+  const [copiedTranscript, setCopiedTranscript] = useState(false)
 
   const platform = item.platform?.toLowerCase() ?? 'web'
   const platformColor = PLATFORM_COLORS[platform] ?? '#7c5cfc'
@@ -118,6 +119,14 @@ const ItemCard = memo(function ItemCard({
 
   const isProcessing = item.status === 'processing'
   const isFailed = item.status === 'failed'
+
+  function handleCopyTranscript(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!item.transcript) return
+    navigator.clipboard.writeText(item.transcript)
+    setCopiedTranscript(true)
+    setTimeout(() => setCopiedTranscript(false), 2500)
+  }
 
   // Boilerplate fallback usernames that should not be shown
   const BOILERPLATE_USERNAMES = ['instagram_creator', 'instagram_user', 'user', 'kullanici']
@@ -177,14 +186,14 @@ const ItemCard = memo(function ItemCard({
           onClick?.()
         }
       }}
-      className={`bg-[#15151e] border card-lift rounded-2xl overflow-hidden group relative flex flex-col justify-between cursor-pointer transition-all duration-300 ${
+      className={`bg-[#0d111c]/80 backdrop-blur-xl border card-lift rounded-2xl overflow-hidden group relative flex flex-col justify-between cursor-pointer transition-all duration-300 ${
         isSelected
-          ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]/50 bg-[var(--accent)]/5 shadow-[0_0_25px_var(--accent-glow)]'
+          ? 'border-indigo-500 ring-2 ring-indigo-500/50 bg-indigo-950/20 shadow-[0_0_25px_rgba(99,102,241,0.25)]'
           : isProcessing
           ? 'border-purple-500/40 shadow-[0_0_25px_rgba(168,85,247,0.15)]'
           : isFailed
           ? 'border-rose-800/50 bg-rose-950/10'
-          : 'border-white/10 hover:border-[var(--accent)]/50 hover:shadow-[0_12px_36px_rgba(0,0,0,0.45)]'
+          : 'border-white/[0.08] hover:border-indigo-500/40 hover:shadow-[0_12px_36px_rgba(0,0,0,0.6),0_0_20px_rgba(99,102,241,0.08)]'
       }`}
     >
       <div>
@@ -291,6 +300,14 @@ const ItemCard = memo(function ItemCard({
                   <span>Reel</span>
                 </span>
               )}
+
+              {(Boolean(item.transcript) || item.extractors?.transcript) && (
+                <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-purple-600/90 to-indigo-600/90 backdrop-blur-md text-white text-[10px] font-bold shadow-md flex items-center gap-1.5 border border-purple-400/40">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <Mic2 className="w-3 h-3 text-purple-200" />
+                  <span>Script Hazır</span>
+                </span>
+              )}
             </div>
 
             {/* Top Right: Quick Delete Button & Category / Media type indicator */}
@@ -377,10 +394,19 @@ const ItemCard = memo(function ItemCard({
             </div>
 
             {/* Hover Inspect Icon */}
-            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              <span className="px-3 py-1.5 rounded-xl bg-black/85 backdrop-blur-md text-white text-xs font-semibold flex items-center gap-1.5 border border-white/10 shadow-lg">
-                <Maximize2 className="w-3.5 h-3.5 text-[var(--accent-light)]" />
-                <span>Kategorize Et & İncele</span>
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center pointer-events-none">
+              <span className="px-3.5 py-2 rounded-xl bg-black/85 backdrop-blur-md text-white text-xs font-semibold flex items-center gap-2 border border-white/20 shadow-xl group-hover:scale-105 transition-transform">
+                {Boolean(item.transcript) || isReel ? (
+                  <>
+                    <Mic2 className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Script & Detayları Aç</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-[var(--accent-light)]" />
+                    <span>Kategorize Et & İncele</span>
+                  </>
+                )}
               </span>
             </div>
 
@@ -522,6 +548,37 @@ const ItemCard = memo(function ItemCard({
             </p>
           )}
 
+          {/* Transcript snippet with quick copy */}
+          {Boolean(item.transcript) && (
+            <div className="text-[11px] text-purple-200/90 leading-relaxed bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-purple-950/20 p-2.5 rounded-xl border border-purple-500/25 font-sans">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] font-semibold text-purple-400 flex items-center gap-1">
+                  <Mic2 className="w-3 h-3 text-purple-300" />
+                  <span>Konuşma Dökümü</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyTranscript}
+                  className="text-[10px] text-purple-300 hover:text-white flex items-center gap-1 bg-purple-900/40 hover:bg-purple-800/80 px-2 py-0.5 rounded-md border border-purple-500/30 transition-all cursor-pointer"
+                  title="Scripti panoya kopyala"
+                >
+                  {copiedTranscript ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-300 font-semibold">Kopyalandı!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>Kopyala</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="italic text-zinc-300 line-clamp-2">&ldquo;{item.transcript?.slice(0, 110)}...&rdquo;</p>
+            </div>
+          )}
+
           {/* ── Action Buttons for Recipe / Travel / Product (AŞAMA 3) ── */}
           {Boolean(item.category === 'recipe' || recipeIngredients.length > 0) && (
             <button
@@ -595,9 +652,9 @@ const ItemCard = memo(function ItemCard({
                 </span>
               )}
               {(item.extractors?.transcript === true || item.transcript) && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-950/40 text-purple-300 border border-purple-800/40 text-[9px] font-medium">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-purple-950/40 text-purple-300 border border-purple-800/40 text-[9px] font-medium" title="Video konuşma scripti çıkarıldı">
                   <Mic2 className="w-2.5 h-2.5" />
-                  Ses (Whisper)
+                  🎬 Script
                 </span>
               )}
             </div>

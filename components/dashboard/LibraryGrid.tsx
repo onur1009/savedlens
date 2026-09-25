@@ -26,10 +26,15 @@ export default function LibraryGrid({
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
-  // Reset pagination when items filter / search changes
+  // Reset pagination only when total item count changes (new filter/search applied)
+  // Not when individual items are updated in-place (e.g., star toggled, category changed)
+  const prevLengthRef = useRef(items.length)
   useEffect(() => {
-    setVisibleCount(BATCH_SIZE)
-  }, [items])
+    if (items.length !== prevLengthRef.current) {
+      setVisibleCount(BATCH_SIZE)
+      prevLengthRef.current = items.length
+    }
+  }, [items.length])
 
   // Infinite Scroll: automatically load next batch as sentinel approaches viewport
   useEffect(() => {

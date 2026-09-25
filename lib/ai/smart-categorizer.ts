@@ -500,3 +500,90 @@ export async function assignBookmarkToSmartCollection(
     collectionName: matched?.name || plan.collectionName,
   }
 }
+
+// ── Category metadata lookup for Gemini results ──────────────────
+
+const CATEGORY_META: Record<string, { name: string; color: string; icon: string }> = {
+  recipe: { name: '🍳 Yemek & Mutfak Tarifleri', color: '#f59e0b', icon: 'chef-hat' },
+  health: { name: '🩺 Sağlık, Diyet & Fitness', color: '#06b6d4', icon: 'heart-pulse' },
+  productivity: { name: '⚡ Yapay Zeka & Kodlama', color: '#6366f1', icon: 'code' },
+  finance: { name: '💰 Finans, Borsa & Girişim', color: '#10b981', icon: 'trending-up' },
+  motivation_mindset: { name: '💡 Kişisel Gelişim & Zihin', color: '#f97316', icon: 'lightbulb' },
+  travel: { name: '📍 Gezi, Rota & Mekanlar', color: '#3b82f6', icon: 'map-pin' },
+  product: { name: '🛍️ Ürün İnceleme & Fırsatlar', color: '#f43f5e', icon: 'ticket' },
+  book_movie: { name: '📚 Kitap, Dizi, Film & Oyun', color: '#8b5cf6', icon: 'book-open' },
+  other: { name: '📌 Genel Arşiv', color: '#6b7280', icon: 'folder' },
+}
+
+/**
+ * AI-powered categorization: tries Gemini Flash first, falls back to regex.
+ * This is the primary entry point for all categorization.
+ */
+export async function planSmartCategoryWithAI(
+  title: string | null | undefined,
+  caption: string | null | undefined,
+  author: string | null | undefined,
+  userCollections?: Array<{ id: string; name: string; color?: string | null; icon?: string | null }>,
+  bookmarkId?: string
+): Promise<SmartCategoryPlan> {
+  // Try Gemini first
+  try {
+    const { isGeminiAvailable, categorizeWithGemini } = await import('./gemini-categorizer')
+
+    if (isGeminiAvailable()) {
+      const hashtags = extractHashtags(`${title || ''} ${caption || ''}`)
+      const geminiResult = await categorizeWithGemini(
+        {
+          id: bookmarkId || 'temp',
+          caption: caption || null,
+          title: title || null,
+          author,
+          hashtags,
+        },
+        userCollections || []
+      )
+
+      if (geminiResult && geminiResult.category) {
+        const meta = CATEGORY_META[geminiResult.category] || CATEGORY_META.other
+
+        // Check if Gemini assigned to a user custom collection
+        let colName = geminiResult.collectionName || meta.name
+        let colColor = meta.color
+        let colIcon = meta.icon
+
+        if (userCollections) {
+          const matchedCol = userCollections.find(
+            (c) => c.name === geminiResult.collectionName || c.name.toLowerCase() === geminiResult.collectionName?.toLowerCase()
+          )
+          if (matchedCol) {
+            colName = matchedCol.name
+            colColor = matchedCol.color || colColor
+            colIcon = matchedCol.icon || colIcon
+          }
+        }
+
+        return {
+          category: geminiResult.category as BookmarkCategory,
+          collectionName: colName,
+          collectionColor: colColor,
+          collectionIcon: colIcon,
+          tags: geminiResult.tags || [],
+          summary: geminiResult.summary || `${title || 'Gönderi'} kütüphanenize kaydedildi.`,
+          extractors: {
+            recipe: geminiResult.category === 'recipe',
+            health: geminiResult.category === 'health',
+            code: geminiResult.category === 'productivity',
+            location: geminiResult.category === 'travel',
+            discount: geminiResult.category === 'product',
+          },
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[smart-categorizer] Gemini categorization failed, falling back to regex:', err instanceof Error ? err.message : String(err))
+  }
+
+  // Fallback to regex-based categorization
+  return planSmartCategory(title, caption, author, userCollections)
+}
+

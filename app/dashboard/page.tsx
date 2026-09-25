@@ -23,7 +23,7 @@ export default async function DashboardPage() {
 
   // Fetch real bookmarks (with collections join) without 1000 row cap, and user collections in parallel
   // Note: embedding and raw_metadata are excluded to avoid sending ~25MB of vector arrays over SSR
-  const BOOKMARK_SELECT_FIELDS = 'id, permalink, platform, caption, author_username, author_name, author_avatar, stored_media_urls, media_urls, ai_summary, ai_tags, extractors, is_favorite, created_at, media_type, status, error_message, category, actionable_data, bookmark_collections(collection_id, collections(id, name, color))'
+  const BOOKMARK_SELECT_FIELDS = 'id, permalink, platform, caption, author_username, author_name, author_avatar, stored_media_urls, media_urls, ai_summary, ai_tags, extractors, is_favorite, created_at, media_type, status, error_message, category, actionable_data, transcript, bookmark_collections(collection_id, collections(id, name, color))'
 
   let rawBookmarks: RawBookmarkRow[] = []
   let rawCollectionsData: unknown[] = []
@@ -76,6 +76,7 @@ export default async function DashboardPage() {
     category?: string | null
     actionable_data?: Record<string, unknown> | null
     bookmark_collections?: Array<{
+      collection_id?: string
       collections?: {
         id: string
         name: string
@@ -93,7 +94,12 @@ export default async function DashboardPage() {
 
   // Map database rows to SavedItem format including collection info
   const items: SavedItem[] = (rawBookmarks || []).map((b) => {
-    const colObj = b.bookmark_collections?.[0]?.collections
+    const colList = b.bookmark_collections || []
+    const colObj = colList[0]?.collections
+    const allColIds = colList
+      .map((bc) => bc.collection_id || bc.collections?.id)
+      .filter((id): id is string => Boolean(id))
+
     const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
     const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
 
@@ -113,9 +119,10 @@ export default async function DashboardPage() {
       author_avatar: b.author_avatar || undefined,
       media_type: b.media_type || undefined,
       stored_media_urls: b.stored_media_urls || [],
-      collection_id: colObj?.id || null,
+      collection_id: colObj?.id || allColIds[0] || null,
       collection_name: colObj?.name || null,
       collection_color: colObj?.color || null,
+      collection_ids: allColIds,
       status: b.status || 'completed',
       error_message: b.error_message || null,
       transcript: b.transcript || null,

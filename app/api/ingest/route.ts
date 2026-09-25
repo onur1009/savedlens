@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isSupabaseConfigured, type SavedItem } from '@/lib/mock-data'
 import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
-import { transcribeAudioFromVideo } from '@/lib/ai/whisper'
+import { transcribeVideoToScript } from '@/lib/ai/video-transcriber'
 import { extractStructuredData } from '@/lib/ai/extractor'
 import { generateEmbedding } from '@/lib/ai/embeddings'
 
@@ -300,15 +300,21 @@ async function processBookmarkBackground(
     const finalMediaType = incoming.media_type || scrapedMeta.media_type || (url.includes('/reel/') ? 'video' : 'image')
     const finalThumbnailList = finalThumb ? [finalThumb] : []
 
-    // 2. Whisper Audio Transcription if Reel/Video with verified downloadable media (SEC-05)
+    // 2. Audio & Video Script Transcription (Gemini / Whisper)
     let transcriptText: string | null = null
-    if (finalMediaType === 'video' || url.includes('/reel/')) {
-      const directMediaUrl = await resolveDirectMediaUrl(url, platform)
-      if (directMediaUrl) {
-        const whisperResult = await transcribeAudioFromVideo(directMediaUrl, finalTitle)
-        transcriptText = whisperResult.transcript
-      } else {
-        console.warn(`[Ingest] Reel için indirilebilir doğrudan medya bulunamadı, transkripsiyon atlanıyor: ${url}`)
+    const isVideoOrReel = finalMediaType === 'video' || url.includes('/reel/') || url.includes('/reels/') || platform === 'tiktok' || platform === 'youtube'
+    if (isVideoOrReel) {
+      try {
+        const transcribeResult = await transcribeVideoToScript({
+          mediaUrl: finalThumb,
+          storedMediaUrls: finalThumbnailList,
+          title: finalTitle,
+          caption: candidateCaption,
+          platform,
+        })
+        transcriptText = transcribeResult.transcript
+      } catch (trErr) {
+        console.warn('[Ingest] Video transcription warning:', trErr)
       }
     }
 
@@ -350,12 +356,24 @@ async function processBookmarkBackground(
       .update(updatePayload)
       .eq('id', bookmarkId)
 
-    // 6. Assign to matching or newly created smart collection
+    // 6. Assign to matching or newly created smart collection with Gemini AI
     try {
       const { data: currentBm } = await admin.from('bookmarks').select('user_id').eq('id', bookmarkId).maybeSingle()
       if (currentBm?.user_id) {
-        const { planSmartCategory, assignBookmarkToSmartCollection } = await import('@/lib/ai/smart-categorizer')
-        const plan = planSmartCategory(finalTitle, candidateCaption, realAuthor.username)
+        // Fetch user custom collections so Gemini can prioritize them
+        const { data: userCols } = await admin
+          .from('collections')
+          .select('id, name, color, icon')
+          .eq('user_id', currentBm.user_id)
+
+        const { planSmartCategoryWithAI, assignBookmarkToSmartCollection } = await import('@/lib/ai/smart-categorizer')
+        const plan = await planSmartCategoryWithAI(
+          finalTitle,
+          candidateCaption,
+          realAuthor.username,
+          userCols || [],
+          bookmarkId
+        )
         await assignBookmarkToSmartCollection(admin, currentBm.user_id, bookmarkId, plan)
       }
     } catch (colErr) {
@@ -367,9 +385,15 @@ async function processBookmarkBackground(
     try {
       const { createAdminClient } = await import('@/lib/supabase/admin')
       const admin = createAdminClient()
-      const { planSmartCategory } = await import('@/lib/ai/smart-categorizer')
+      const { planSmartCategoryWithAI } = await import('@/lib/ai/smart-categorizer')
       const isReel = url.includes('/reel/') || url.includes('/reels/')
-      const plan = planSmartCategory(incoming.title || (isReel ? 'Instagram Reel' : 'Kaydedilen Gönderi'), incoming.caption, incoming.author_username)
+      const plan = await planSmartCategoryWithAI(
+        incoming.title || (isReel ? 'Instagram Reel' : 'Kaydedilen Gönderi'),
+        incoming.caption,
+        incoming.author_username,
+        [],
+        bookmarkId
+      )
 
       await admin
         .from('bookmarks')

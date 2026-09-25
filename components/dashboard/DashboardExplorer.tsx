@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import type { SavedItem } from '@/lib/mock-data'
 import FilterBar, { type SortOption } from './FilterBar'
@@ -28,6 +28,7 @@ import {
   Star,
   Plus,
   FolderPlus,
+  Mic2,
 } from 'lucide-react'
 
 interface CollectionOption {
@@ -189,15 +190,21 @@ export default function DashboardExplorer({
       if (res.ok && data.success) {
         const matchedIds = new Set<string>(data.matchedBookmarkIds || [])
         setItems((prev) =>
-          prev.map((it) =>
-            matchedIds.has(it.id)
-              ? {
-                  ...it,
-                  collection_id: selectedCollectionId,
-                  collection_name: activeCollectionName || it.collection_name,
-                }
-              : it
-          )
+          prev.map((it) => {
+            if (matchedIds.has(it.id)) {
+              const prevColIds = it.collection_ids || (it.collection_id ? [it.collection_id] : [])
+              const updatedColIds = prevColIds.includes(selectedCollectionId)
+                ? prevColIds
+                : [...prevColIds, selectedCollectionId]
+              return {
+                ...it,
+                collection_id: selectedCollectionId,
+                collection_name: activeCollectionName || it.collection_name,
+                collection_ids: updatedColIds,
+              }
+            }
+            return it
+          })
         )
         window.dispatchEvent(new CustomEvent('collections-updated'))
         showToast(data.message || `✨ "${activeCollectionName}" yeniden tarandı ve güncellendi!`)
@@ -220,6 +227,7 @@ export default function DashboardExplorer({
   const [userPlatform, setUserPlatform] = useState<string | null>(null)
   const [userCategory, setUserCategory] = useState<string | null>(null)
   const [userStarred, setUserStarred] = useState<boolean | null>(null)
+  const [userWithTranscript, setUserWithTranscript] = useState<boolean>(false)
   const [userCollectionId, setUserCollectionId] = useState<string | null>(null)
   const [userTags, setUserTags] = useState<string[] | null>(null)
   const [sortBy, setSortBy] = useState<SortOption>('newest')
@@ -247,6 +255,7 @@ export default function DashboardExplorer({
 
   const selectedCategory = userCategory !== null ? userCategory : initialCategoryFromUrl
   const onlyStarred = userStarred !== null ? userStarred : (urlFilter === 'starred')
+  const onlyWithTranscript = userWithTranscript || (urlFilter === 'transcript')
   const selectedCollectionId = userCollectionId !== null ? userCollectionId : urlCollection
   const selectedTags = useMemo(() => {
     return userTags !== null ? userTags : (urlTag ? [urlTag] : [])
@@ -255,15 +264,23 @@ export default function DashboardExplorer({
   // Sync when URL query params change (e.g. from Sidebar navigation)
   useEffect(() => {
     if (urlFilter) {
-      const mapped =
-        urlFilter === 'code'
-          ? 'productivity'
-          : urlFilter === 'location'
-          ? 'travel'
-          : urlFilter === 'discount'
-          ? 'product'
-          : urlFilter
-      setUserCategory(mapped)
+      if (urlFilter === 'transcript') {
+        setUserWithTranscript(true)
+        setUserCategory(null)
+      } else if (urlFilter === 'starred') {
+        setUserStarred(true)
+        setUserCategory(null)
+      } else {
+        const mapped =
+          urlFilter === 'code'
+            ? 'productivity'
+            : urlFilter === 'location'
+            ? 'travel'
+            : urlFilter === 'discount'
+            ? 'product'
+            : urlFilter
+        setUserCategory(mapped)
+      }
       setUserCollectionId(null)
     }
   }, [urlFilter])
@@ -274,6 +291,60 @@ export default function DashboardExplorer({
       setUserCategory(null)
     }
   }, [urlCollection])
+
+  // Instant zero-latency filter synchronization from Sidebar
+  useEffect(() => {
+    const handleFilterChanged = (e: Event) => {
+      try {
+        const custom = e as CustomEvent<string>
+        const targetUrl = new URL(custom.detail, window.location.origin)
+        const filter = targetUrl.searchParams.get('filter')
+        const col = targetUrl.searchParams.get('collection')
+        const platform = targetUrl.searchParams.get('platform')
+
+        if (filter) {
+          const mapped =
+            filter === 'code'
+              ? 'productivity'
+              : filter === 'location'
+              ? 'travel'
+              : filter === 'discount'
+              ? 'product'
+              : filter
+          if (filter === 'starred') {
+            setUserStarred(true)
+            setUserCategory(null)
+          } else {
+            setUserStarred(null)
+            setUserCategory(mapped)
+          }
+          setUserCollectionId(null)
+          setUserPlatform('Hepsi')
+        } else if (col) {
+          setUserCollectionId(col)
+          setUserCategory(null)
+          setUserStarred(null)
+          setUserPlatform('Hepsi')
+        } else if (platform) {
+          setUserPlatform(platform)
+          setUserCategory(null)
+          setUserCollectionId(null)
+          setUserStarred(null)
+        } else {
+          // Reset all filters when clicking /dashboard
+          setUserCategory(null)
+          setUserCollectionId(null)
+          setUserPlatform('Hepsi')
+          setUserStarred(null)
+        }
+      } catch (err) {
+        console.warn('Filter sync error:', err)
+      }
+    }
+
+    window.addEventListener('dashboard-filter-changed', handleFilterChanged)
+    return () => window.removeEventListener('dashboard-filter-changed', handleFilterChanged)
+  }, [])
 
   function handleSelectCategory(cat: string) {
     setUserCollectionId(null)
@@ -286,20 +357,36 @@ export default function DashboardExplorer({
   }
 
   // ── Polling for Ingestion Jobs (status === 'processing') ────────
+  // Use a ref to avoid recreating the interval on every state change
+  const processingIdsRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
-    const processingList = items.filter((it) => it.status === 'processing')
-    if (processingList.length === 0) return
+    const newProcessing = new Set(items.filter((it) => it.status === 'processing').map((it) => it.id))
+    processingIdsRef.current = newProcessing
+  }, [items])
+
+  useEffect(() => {
+    // Check once if there are processing items
+    const initialProcessing = items.filter((it) => it.status === 'processing')
+    if (initialProcessing.length === 0) return
 
     const interval = setInterval(async () => {
-      for (const procItem of processingList) {
+      const currentIds = Array.from(processingIdsRef.current)
+      if (currentIds.length === 0) {
+        clearInterval(interval)
+        return
+      }
+
+      for (const procId of currentIds) {
         try {
-          const res = await fetch(`/api/v1/bookmarks/${procItem.id}`)
+          const res = await fetch(`/api/v1/bookmarks/${procId}`)
           if (res.ok) {
             const data = await res.json()
             if (data.item && data.item.status !== 'processing') {
+              processingIdsRef.current.delete(procId)
               setItems((prev) =>
                 prev.map((it) =>
-                  it.id === procItem.id
+                  it.id === procId
                     ? {
                         ...it,
                         ...data.item,
@@ -318,10 +405,11 @@ export default function DashboardExplorer({
           // ignore
         }
       }
-    }, 3500)
+    }, 4000)
 
     return () => clearInterval(interval)
-  }, [items])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Semantic Search Debounce ───────────────────────────────────
   useEffect(() => {
@@ -379,13 +467,20 @@ export default function DashboardExplorer({
 
       // 3. Collection Filter
       if (selectedCollectionId) {
-        if (item.collection_id !== selectedCollectionId) {
+        const matchDirect = item.collection_id === selectedCollectionId
+        const matchMulti = item.collection_ids?.includes(selectedCollectionId)
+        if (!matchDirect && !matchMulti) {
           return false
         }
       }
 
       // 4. Starred Filter
       if (onlyStarred && !item.starred) {
+        return false
+      }
+
+      // 4.5. Script / Transcript Filter
+      if (onlyWithTranscript && !item.transcript && !item.extractors?.transcript) {
         return false
       }
 
@@ -615,6 +710,7 @@ export default function DashboardExplorer({
     setUserCollectionId(null)
     setUserTags([])
     setUserStarred(false)
+    setUserWithTranscript(false)
     setSortBy('newest')
     if (urlFilter || searchParams.get('platform') || searchParams.get('tag') || searchParams.get('collection')) {
       router.push('/dashboard')
@@ -851,6 +947,7 @@ export default function DashboardExplorer({
     selectedCategory !== null ||
     selectedCollectionId !== null ||
     onlyStarred ||
+    onlyWithTranscript ||
     selectedTags.length > 0 ||
     isSemanticSearch ||
     sortBy !== 'newest' ||
@@ -970,6 +1067,22 @@ export default function DashboardExplorer({
         {/* Quick Filter Category Chips */}
         <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
           <span className="text-[10px] uppercase font-bold text-zinc-400 shrink-0 mr-1">Hızlı Filtrele:</span>
+
+          <button
+            type="button"
+            onClick={() => setUserWithTranscript((prev) => !prev)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all border shrink-0 cursor-pointer ${
+              onlyWithTranscript
+                ? 'bg-purple-600/30 text-purple-200 border-purple-500/60 ring-1 ring-purple-400 font-bold shadow-[0_0_12px_rgba(168,85,247,0.3)]'
+                : 'bg-zinc-900/60 text-zinc-400 border-white/5 hover:text-purple-300 hover:border-purple-500/30'
+            }`}
+          >
+            <Mic2 className="w-3.5 h-3.5 text-purple-400" />
+            <span>Scriptli Videolar</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 font-bold">
+              {items.filter((i) => Boolean(i.transcript) || i.extractors?.transcript).length}
+            </span>
+          </button>
 
           <button
             type="button"
@@ -1139,6 +1252,8 @@ export default function DashboardExplorer({
         onClearFilters={handleClearFilters}
         onlyStarred={onlyStarred}
         onToggleStarred={() => setUserStarred((prev) => (prev !== null ? !prev : !onlyStarred))}
+        onlyWithTranscript={onlyWithTranscript}
+        onToggleWithTranscript={() => setUserWithTranscript((prev) => !prev)}
         isSemanticSearch={isSemanticSearch}
         onToggleSemanticSearch={() => setIsSemanticSearch((prev) => !prev)}
         sortBy={sortBy}

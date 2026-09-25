@@ -22,6 +22,8 @@ import {
   LogOut,
   Folder,
   Plus,
+  Mic2,
+  Sparkles,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
@@ -51,6 +53,7 @@ interface SidebarCollection {
 const mainNav = [
   { href: '/', label: 'Ana Sayfa (Home)', icon: Home },
   { href: '/dashboard', label: 'Tüm Yer İmleri', icon: LayoutGrid, exact: true },
+  { href: '/dashboard?filter=transcript', label: '🎙️ Video Scriptleri', icon: Mic2, filterMatch: 'transcript' },
   { href: '/dashboard?platform=instagram', label: 'Instagram Arşivi', icon: InstagramIcon, platformMatch: 'instagram' },
   { href: '/dashboard/collections', label: 'Koleksiyon Yönetimi', icon: FolderOpen },
   { href: '/dashboard/tags', label: 'Etiketler', icon: Tag },
@@ -122,31 +125,39 @@ export default function Sidebar({ user, initialCollections = [] }: SidebarProps)
     .join('')
     .toUpperCase()
 
+  const handleClientFilterNav = (e: React.MouseEvent, href: string) => {
+    if (pathname === '/dashboard' && (href.startsWith('/dashboard?') || href === '/dashboard')) {
+      e.preventDefault()
+      window.history.pushState(null, '', href)
+      window.dispatchEvent(new CustomEvent('dashboard-filter-changed', { detail: href }))
+    }
+  }
+
   return (
     <aside
-      className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r border-[var(--border)] bg-[var(--bg-surface)] z-20"
+      className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r border-white/[0.08] bg-[#070a11]/95 backdrop-blur-2xl z-20"
       aria-label="Sidebar navigation"
     >
       {/* Logo -> Links to Home */}
       <Link
         href="/"
-        className="flex items-center gap-2 px-5 py-5 border-b border-[var(--border)] hover:bg-white/5 transition-colors group cursor-pointer"
+        className="flex items-center gap-2.5 px-5 py-5 border-b border-white/[0.08] hover:bg-white/5 transition-colors group cursor-pointer"
         title="Ana Sayfaya Git"
       >
-        <div className="w-8 h-8 rounded-xl bg-[var(--accent)] group-hover:scale-105 transition-transform flex items-center justify-center shadow-[0_0_16px_var(--accent-glow)]">
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 group-hover:scale-105 transition-transform flex items-center justify-center shadow-[0_0_16px_rgba(99,102,241,0.4)]">
           <BookmarkPlus className="w-4 h-4 text-white" />
         </div>
-        <span className="font-bold text-base tracking-tight text-[var(--text-primary)] group-hover:text-white transition-colors">
+        <span className="font-bold text-base tracking-tight text-white group-hover:text-indigo-300 transition-colors">
           SavedLens
         </span>
-        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent-light)] border border-[var(--border-accent)]">
+        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
           V2.0
         </span>
       </Link>
 
       {/* Main nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-1 scrollbar-hide">
-        <p className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] px-2 mb-1.5 font-bold">
+        <p className="text-[10px] uppercase tracking-widest text-zinc-500 px-2 mb-1.5 font-bold">
           Genel
         </p>
         {mainNav.map((item) => {
@@ -162,13 +173,14 @@ export default function Sidebar({ user, initialCollections = [] }: SidebarProps)
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
+              onClick={(e) => handleClientFilterNav(e, item.href)}
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-[var(--accent-subtle)] text-[var(--accent-light)] border border-[var(--border-accent)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                  ? 'bg-gradient-to-r from-indigo-950/70 to-purple-950/50 text-indigo-200 border border-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.18)] font-semibold'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
               }`}
             >
-              <item.icon className="w-4 h-4 shrink-0" />
+              <item.icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-300' : 'text-zinc-400'}`} />
               <span>{item.label}</span>
             </Link>
           )
@@ -199,6 +211,7 @@ export default function Sidebar({ user, initialCollections = [] }: SidebarProps)
                 <Link
                   key={col.id}
                   href={`/dashboard?collection=${col.id}`}
+                  onClick={(e) => handleClientFilterNav(e, `/dashboard?collection=${col.id}`)}
                   className={`flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                     isColActive
                       ? 'bg-purple-950/60 text-purple-200 border border-purple-500/50 shadow-sm font-bold'
@@ -244,6 +257,7 @@ export default function Sidebar({ user, initialCollections = [] }: SidebarProps)
             <Link
               key={item.href}
               href={item.href}
+              onClick={(e) => handleClientFilterNav(e, item.href)}
               className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
                 isActive
                   ? 'bg-[var(--accent-subtle)] text-[var(--accent-light)] border border-[var(--border-accent)] font-bold'

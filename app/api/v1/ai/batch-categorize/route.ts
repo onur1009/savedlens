@@ -3,8 +3,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { planSmartCategory } from '@/lib/ai/smart-categorizer'
 import { formatBookmarkTitle, extractRealAuthor } from '@/lib/bookmark-formatter'
+import { extractHashtags } from '@/lib/ai/extractor'
 
-export const maxDuration = 60 // Extended execution for batch processing
+export const maxDuration = 120 // Extended for AI batch processing
 
 interface BookmarkUpdateRow {
   id: string
@@ -78,22 +79,125 @@ export async function POST(request: Request) {
       colMap.set(c.name.toLowerCase().trim(), c)
     }
 
-    // 3. In-memory category and collection planning for all bookmarks
+    // 3. Try Gemini AI categorization first
+    let useGemini = false
+    let geminiResults = new Map<string, { category: string; collectionName: string; confidence: number; summary: string; tags: string[]; reasoning: string }>()
+
+    try {
+      const { isGeminiAvailable, batchCategorizeWithGemini } = await import('@/lib/ai/gemini-categorizer')
+
+      if (isGeminiAvailable()) {
+        useGemini = true
+        console.log(`[batch-categorize] Using Gemini AI for ${bookmarks.length} bookmarks`)
+
+        const inputs = bookmarks.map((b) => ({
+          id: b.id,
+          caption: b.caption,
+          title: formatBookmarkTitle(b.caption, b.permalink, extractRealAuthor(b.caption, b.author_username || b.author_name).name),
+          author: b.author_username || b.author_name,
+          hashtags: extractHashtags(b.caption || ''),
+          permalink: b.permalink,
+        }))
+
+        geminiResults = await batchCategorizeWithGemini(inputs, existingCols || [])
+        console.log(`[batch-categorize] Gemini categorized ${geminiResults.size}/${bookmarks.length} bookmarks`)
+      }
+    } catch (err) {
+      console.warn('[batch-categorize] Gemini unavailable, using regex fallback:', err instanceof Error ? err.message : String(err))
+    }
+
+    // 4. Build category plans — Gemini results + regex fallback for uncategorized
     const missingColsMap = new Map<string, { name: string; color: string; icon: string }>()
     const plannedBookmarks: Array<{
       b: (typeof bookmarks)[0]
-      plan: ReturnType<typeof planSmartCategory>
-      cleanTitle: string
+      category: string
+      collectionName: string
+      collectionColor: string
+      collectionIcon: string
+      summary: string
+      tags: string[]
+      extractors: Record<string, boolean>
       targetColKey: string
     }> = []
 
-    for (const b of bookmarks) {
-      const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
-      const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
-      const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username, existingCols || [])
-      const targetColKey = plan.collectionName.toLowerCase().trim()
+    // Category metadata for Gemini results
+    const CATEGORY_META: Record<string, { name: string; color: string; icon: string }> = {
+      recipe: { name: '🍳 Yemek & Mutfak Tarifleri', color: '#f59e0b', icon: 'chef-hat' },
+      health: { name: '🩺 Sağlık, Diyet & Fitness', color: '#06b6d4', icon: 'heart-pulse' },
+      productivity: { name: '⚡ Yapay Zeka & Kodlama', color: '#6366f1', icon: 'code' },
+      finance: { name: '💰 Finans, Borsa & Girişim', color: '#10b981', icon: 'trending-up' },
+      motivation_mindset: { name: '💡 Kişisel Gelişim & Zihin', color: '#f97316', icon: 'lightbulb' },
+      travel: { name: '📍 Gezi, Rota & Mekanlar', color: '#3b82f6', icon: 'map-pin' },
+      product: { name: '🛍️ Ürün İnceleme & Fırsatlar', color: '#f43f5e', icon: 'ticket' },
+      book_movie: { name: '📚 Kitap, Dizi, Film & Oyun', color: '#8b5cf6', icon: 'book-open' },
+      other: { name: '📌 Genel Arşiv', color: '#6b7280', icon: 'folder' },
+    }
 
-      plannedBookmarks.push({ b, plan, cleanTitle, targetColKey })
+    for (const b of bookmarks) {
+      const geminiResult = geminiResults.get(b.id)
+
+      let category: string
+      let collectionName: string
+      let collectionColor: string
+      let collectionIcon: string
+      let summary: string
+      let tags: string[]
+      let extractors: Record<string, boolean>
+
+      if (geminiResult) {
+        // Use Gemini AI result
+        category = geminiResult.category
+        const meta = CATEGORY_META[category] || CATEGORY_META.other
+        collectionName = geminiResult.collectionName || meta.name
+        collectionColor = meta.color
+        collectionIcon = meta.icon
+        summary = geminiResult.summary
+        tags = geminiResult.tags || []
+        extractors = {
+          recipe: category === 'recipe',
+          health: category === 'health',
+          code: category === 'productivity',
+          location: category === 'travel',
+          discount: category === 'product',
+        }
+
+        // Check if Gemini pointed to a user custom collection
+        if (existingCols) {
+          const matchedCustom = existingCols.find(
+            (c) => c.name === collectionName || c.name.toLowerCase() === collectionName.toLowerCase()
+          )
+          if (matchedCustom) {
+            collectionName = matchedCustom.name
+            collectionColor = matchedCustom.color || collectionColor
+            collectionIcon = matchedCustom.icon || collectionIcon
+          }
+        }
+      } else {
+        // Fallback to regex-based categorization
+        const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
+        const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
+        const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username, existingCols || [])
+        category = plan.category
+        collectionName = plan.collectionName
+        collectionColor = plan.collectionColor
+        collectionIcon = plan.collectionIcon
+        summary = plan.summary
+        tags = plan.tags
+        extractors = plan.extractors as Record<string, boolean>
+      }
+
+      const targetColKey = collectionName.toLowerCase().trim()
+      plannedBookmarks.push({
+        b,
+        category,
+        collectionName,
+        collectionColor,
+        collectionIcon,
+        summary,
+        tags,
+        extractors,
+        targetColKey,
+      })
 
       // Check if collection exists
       let colRecord = colMap.get(targetColKey)
@@ -108,14 +212,14 @@ export async function POST(request: Request) {
 
       if (!colRecord && !missingColsMap.has(targetColKey)) {
         missingColsMap.set(targetColKey, {
-          name: plan.collectionName,
-          color: plan.collectionColor,
-          icon: plan.collectionIcon,
+          name: collectionName,
+          color: collectionColor,
+          icon: collectionIcon,
         })
       }
     }
 
-    // 4. Batch create any missing collections
+    // 5. Batch create any missing collections
     if (missingColsMap.size > 0) {
       const toInsert = Array.from(missingColsMap.values()).map((c) => ({
         user_id: user.id,
@@ -138,13 +242,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // 5. Build bookmark updates, relationships, and lightweight patch map
+    // 6. Build bookmark updates, relationships, and lightweight patch map
     const bookmarkUpdates: BookmarkUpdateRow[] = []
     const bcToInsertMap = new Map<string, { bookmark_id: string; collection_id: string }>()
     const patchMap: Record<string, PatchData> = {}
     const nowIso = new Date().toISOString()
 
-    for (const { b, plan, targetColKey } of plannedBookmarks) {
+    for (const planned of plannedBookmarks) {
+      const { b, targetColKey } = planned
       let colRecord = colMap.get(targetColKey)
       if (!colRecord) {
         for (const [key, val] of colMap.entries()) {
@@ -168,28 +273,28 @@ export async function POST(request: Request) {
         user_id: b.user_id,
         platform: b.platform || 'web',
         permalink: b.permalink,
-        category: plan.category,
-        ai_summary: plan.summary,
-        ai_tags: plan.tags,
+        category: planned.category,
+        ai_summary: planned.summary,
+        ai_tags: planned.tags,
         extractors: {
           ...(b.extractors || {}),
-          ...plan.extractors,
+          ...planned.extractors,
         },
         status: 'completed',
         updated_at: nowIso,
       })
 
       patchMap[b.id] = {
-        category: plan.category,
-        summary: plan.summary,
-        tags: plan.tags,
+        category: planned.category,
+        summary: planned.summary,
+        tags: planned.tags,
         collection_id: colRecord?.id || null,
         collection_name: colRecord?.name || null,
         collection_color: colRecord?.color || null,
       }
     }
 
-    // 6. High-speed Chunked Batch Upsert for bookmarks (80 per chunk, concurrency: 3)
+    // 7. High-speed Chunked Batch Upsert for bookmarks (80 per chunk, concurrency: 3)
     const CHUNK_SIZE = 80
     const bookmarkChunks: BookmarkUpdateRow[][] = []
     for (let i = 0; i < bookmarkUpdates.length; i += CHUNK_SIZE) {
@@ -211,7 +316,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // 7. High-speed Chunked Batch Upsert for bookmark_collections
+    // 8. High-speed Chunked Batch Upsert for bookmark_collections
     const bcList = Array.from(bcToInsertMap.values())
     const bcChunks: Array<typeof bcList> = []
     for (let i = 0; i < bcList.length; i += CHUNK_SIZE) {
@@ -232,7 +337,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // 8. Fetch finalized collections list with counts
+    // 9. Fetch finalized collections list with counts
     const { data: finalCols } = await supabase
       .from('collections')
       .select('*, bookmark_collections(count)')
@@ -255,13 +360,17 @@ export async function POST(request: Request) {
       count: c.bookmark_collections?.[0]?.count || 0,
     }))
 
+    const aiNote = useGemini
+      ? ` (Gemini AI ile ${geminiResults.size} gönderi derinlemesine analiz edildi)`
+      : ' (Anahtar kelime eşleştirmesi ile kategorize edildi)'
+
     return NextResponse.json({
       success: true,
       processedCount: bookmarkUpdates.length,
       total: bookmarks.length,
       patchMap,
       collections: formattedCollections,
-      message: `${bookmarkUpdates.length} içerik başarıyla analiz edildi ve akıllı kategorilerine yerleştirildi.`,
+      message: `${bookmarkUpdates.length} içerik başarıyla analiz edildi ve akıllı kategorilerine yerleştirildi${aiNote}.`,
     })
   } catch (err) {
     console.error('[batch-categorize] Unexpected error:', err)
@@ -271,3 +380,4 @@ export async function POST(request: Request) {
     )
   }
 }
+

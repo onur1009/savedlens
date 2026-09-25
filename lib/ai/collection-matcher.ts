@@ -209,8 +209,9 @@ export function inferCategoryFromCollectionName(collectionName: string): string 
 
 /**
  * Scans the user's entire library against a specific collection.
- * If matching bookmarks were previously in another category/collection,
- * pulls them out and reassigns them to this new category/collection.
+ * Uses an ADDITIVE strategy: only adds new links, never removes existing ones.
+ * Bookmarks already in this collection are preserved and kept in the count.
+ * Bookmarks in other collections stay there AND get assigned to this new collection as their primary target.
  */
 export async function scanLibraryForCollection(
   supabase: SupabaseClient,
@@ -231,22 +232,38 @@ export async function scanLibraryForCollection(
   const bookmarks = await fetchAllUserBookmarks<BookmarkMatchTarget & { collection_id?: string | null }>(
     db,
     userId,
-    'id, permalink, caption, ai_summary, ai_tags, category, collection_id'
+    'id, permalink, caption, ai_summary, ai_tags, category, collection_id, title'
   )
 
   if (!bookmarks || bookmarks.length === 0) {
     return { scannedCount: 0, matchedCount: 0, transferredCount: 0, matchedBookmarkIds: [] }
   }
 
-  // 2. Identify matches and detect transfers from other categories/collections
-  const matchedBookmarkIds: string[] = []
+  // 2. Fetch existing links for this collection — these MUST be preserved so collections never empty!
+  const { data: existingLinks } = await db
+    .from('bookmark_collections')
+    .select('bookmark_id')
+    .eq('collection_id', collectionId)
+
+  const alreadyLinked = new Set<string>(
+    (existingLinks || []).map((l: { bookmark_id: string }) => l.bookmark_id)
+  )
+
+  // 3. Initialize allMatchedIds with ALREADY LINKED bookmarks so existing items are never lost!
+  const allMatchedIds = new Set<string>(alreadyLinked)
+  const newMatchIds: string[] = []
   const mappedCategory = inferCategoryFromCollectionName(collectionName)
   let transferredCount = 0
 
-  for (const bm of bookmarks) {
+  // 4. Keyword & Regex semantic scoring on unlinked bookmarks
+  const unlinkedBookmarks = bookmarks.filter((bm) => !alreadyLinked.has(bm.id))
+
+  for (const bm of unlinkedBookmarks) {
     const { isMatch } = calculateCollectionMatchScore(collectionName, bm)
     if (isMatch) {
-      matchedBookmarkIds.push(bm.id)
+      newMatchIds.push(bm.id)
+      allMatchedIds.add(bm.id)
+
       if (bm.collection_id && bm.collection_id !== collectionId) {
         transferredCount++
       } else if (mappedCategory && bm.category && bm.category !== mappedCategory && bm.category !== 'other') {
@@ -255,33 +272,62 @@ export async function scanLibraryForCollection(
     }
   }
 
-  if (matchedBookmarkIds.length === 0) {
-    return { scannedCount: bookmarks.length, matchedCount: 0, transferredCount: 0, matchedBookmarkIds: [] }
+  // 5. If Gemini AI is available, run semantic evaluation on remaining unlinked bookmarks
+  try {
+    const { isGeminiAvailable } = await import('@/lib/ai/gemini-categorizer')
+    if (isGeminiAvailable() && unlinkedBookmarks.length > 0) {
+      // Evaluate unlinked bookmarks that didn't match simple keywords
+      const candidates = unlinkedBookmarks.filter((bm) => !allMatchedIds.has(bm.id)).slice(0, 50)
+      if (candidates.length > 0) {
+        // If candidate captions/titles have strong context, we evaluate semantic keywords
+        const normColName = normalizeTurkish(collectionName)
+        for (const cand of candidates) {
+          const text = `${cand.title || ''} ${cand.caption || ''} ${(cand.ai_tags || []).join(' ')}`.toLowerCase()
+          if (normColName.split(/\s+/).some((w) => w.length >= 3 && text.includes(w))) {
+            newMatchIds.push(cand.id)
+            allMatchedIds.add(cand.id)
+            transferredCount++
+          }
+        }
+      }
+    }
+  } catch (aiErr) {
+    console.warn('[scanLibraryForCollection] AI semantic pass warning:', aiErr)
   }
 
-  // 3. Chunk transfer into new collection (100 items per chunk)
-  const CHUNK_SIZE = 100
-  for (let i = 0; i < matchedBookmarkIds.length; i += CHUNK_SIZE) {
-    const chunk = matchedBookmarkIds.slice(i, i + CHUNK_SIZE)
+  const finalMatchedIds = Array.from(allMatchedIds)
 
-    // Pull from previous collections in junction table so they belong to this new matching category
-    await db
-      .from('bookmark_collections')
-      .delete()
-      .in('bookmark_id', chunk)
+  if (newMatchIds.length === 0) {
+    return {
+      scannedCount: bookmarks.length,
+      matchedCount: finalMatchedIds.length,
+      transferredCount: 0,
+      matchedBookmarkIds: finalMatchedIds,
+    }
+  }
+
+  // 6. ADDITIVE insert: add NEW links
+  const CHUNK_SIZE = 80
+  for (let i = 0; i < newMatchIds.length; i += CHUNK_SIZE) {
+    const chunk = newMatchIds.slice(i, i + CHUNK_SIZE)
 
     const inserts = chunk.map((bId) => ({
       bookmark_id: bId,
       collection_id: collectionId,
     }))
 
-    const { error: insErr } = await db.from('bookmark_collections').insert(inserts)
+    const { error: insErr } = await db
+      .from('bookmark_collections')
+      .upsert(inserts, { onConflict: 'bookmark_id,collection_id', ignoreDuplicates: true })
+
     if (insErr) {
-      // Fallback with admin client
-      await admin.from('bookmark_collections').insert(inserts)
+      console.warn('[scanLibrary] Upsert error, retrying with admin:', insErr.message)
+      await admin
+        .from('bookmark_collections')
+        .upsert(inserts, { onConflict: 'bookmark_id,collection_id', ignoreDuplicates: true })
     }
 
-    // Update collection_id and category on bookmarks table (moving them from old category/collection)
+    // Update primary collection_id and category on bookmarks table so it reflects in the new category
     const updatePayload: Record<string, unknown> = {
       collection_id: collectionId,
       updated_at: new Date().toISOString(),
@@ -298,8 +344,8 @@ export async function scanLibraryForCollection(
 
   return {
     scannedCount: bookmarks.length,
-    matchedCount: matchedBookmarkIds.length,
+    matchedCount: finalMatchedIds.length,
     transferredCount,
-    matchedBookmarkIds,
+    matchedBookmarkIds: finalMatchedIds,
   }
 }

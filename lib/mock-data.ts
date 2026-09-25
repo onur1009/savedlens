@@ -137,6 +137,7 @@ export interface SavedItem {
   collection_id?: string | null
   collection_name?: string | null
   collection_color?: string | null
+  collection_ids?: string[]
   status?: 'processing' | 'completed' | 'failed'
   error_message?: string | null
   transcript?: string | null

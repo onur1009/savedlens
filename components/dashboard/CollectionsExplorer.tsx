@@ -129,9 +129,23 @@ export default function CollectionsExplorer({
       })
       const data = await res.json()
       if (res.ok && data.success) {
+        const matchedIds = new Set<string>(data.matchedBookmarkIds || [])
         setCollections((prev) =>
           prev.map((c) => (c.id === colId ? { ...c, count: data.matchedCount } : c))
         )
+        if (matchedIds.size > 0) {
+          setBookmarks((prev) =>
+            prev.map((b) => {
+              if (matchedIds.has(b.id)) {
+                const existing = b.collections || []
+                return existing.includes(colId)
+                  ? b
+                  : { ...b, collections: [...existing, colId] }
+              }
+              return b
+            })
+          )
+        }
         router.refresh()
         window.dispatchEvent(new CustomEvent('collections-updated'))
         showToast(data.message || `"${colName}" yeniden tarandı ve güncellendi!`)
