@@ -43,9 +43,18 @@ import {
   Save,
   Search,
   Volume2,
+  Globe,
 } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
 import { formatBookmarkTitle, extractRealAuthor, extractInstagramShortcode } from '@/lib/bookmark-formatter'
+
+function isForeignContent(text?: string | null): boolean {
+  if (!text || text.length < 15) return false
+  const lower = text.toLowerCase()
+  const trMatches = lower.match(/\b(ve|bir|için|icin|ile|bu|çok|cok|da|de|ne|var|yok|gibi|kadar|nasıl|nasil|bunu|şöyle|soyle|tarif|yemek|gün|gun)\b|[çğıöşü]/g) || []
+  const enMatches = lower.match(/\b(the|and|is|in|to|of|for|with|this|that|you|it|on|how|recipe|make|easy|best|day|from|food|video|tips|watch|new)\b/g) || []
+  return enMatches.length > trMatches.length && enMatches.length >= 2
+}
 
 interface CollectionOption {
   id: string
@@ -115,6 +124,9 @@ function ItemDetailModalContent({
   const [recipeCopied, setRecipeCopied] = useState(false)
   const [transcriptCopied, setTranscriptCopied] = useState(false)
   const [transcript, setTranscript] = useState<string | null>(item.transcript || null)
+  const initialOrig = (item.actionable_data as any)?.original_transcript || null
+  const [originalTranscript, setOriginalTranscript] = useState<string | null>(initialOrig)
+  const [scriptLang, setScriptLang] = useState<'tr' | 'orig'>('tr')
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -247,8 +259,17 @@ function ItemDetailModalContent({
     isVideoContent ? 'script' : 'summary'
   )
   const [scriptSearchQuery, setScriptSearchQuery] = useState('')
-  const scriptWords = transcript ? transcript.trim().split(/\s+/).filter(Boolean).length : 0
-  const scriptReadTimeMinutes = Math.max(1, Math.ceil(scriptWords / 130))
+  const isForeignSource = Boolean(
+    originalTranscript ||
+    (item.actionable_data as any)?.is_translated ||
+    isForeignContent(item.description) ||
+    isForeignContent(item.title)
+  )
+  const effectiveOriginalText = originalTranscript || (isForeignSource && item.description ? item.description : null)
+  const hasOriginalOption = Boolean(effectiveOriginalText)
+  const displayedScript = (scriptLang === 'orig' && effectiveOriginalText) ? effectiveOriginalText : transcript
+  const displayedWords = displayedScript ? displayedScript.trim().split(/\s+/).filter(Boolean).length : 0
+  const displayedReadTime = Math.max(1, Math.ceil(displayedWords / 130))
 
 
   // 1. Assign collection
@@ -408,6 +429,10 @@ function ItemDetailModalContent({
           setEditedScript(data.transcript)
         }
 
+        if (data.actionable_data?.original_transcript) {
+          setOriginalTranscript(data.actionable_data.original_transcript)
+        }
+
         const updatedItem = {
           ...item,
           category: data.category || item.category,
@@ -453,11 +478,19 @@ function ItemDetailModalContent({
       if (res.ok && data.success && data.transcript) {
         setTranscript(data.transcript)
         setEditedScript(data.transcript)
+        if (data.original_transcript) {
+          setOriginalTranscript(data.original_transcript)
+        }
         setTranscribeMessage(data.message || 'Video deşifresi başarıyla çıkarıldı!')
         if (onItemUpdated) {
           onItemUpdated({
             ...item,
             transcript: data.transcript,
+            actionable_data: {
+              ...((item.actionable_data as any) || {}),
+              original_transcript: data.original_transcript || (item.actionable_data as any)?.original_transcript,
+              is_translated: data.is_translated,
+            },
             extractors: {
               ...(item.extractors || {}),
               transcript: true,
@@ -851,16 +884,53 @@ function ItemDetailModalContent({
                     <div>
                       <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
                         <Volume2 className="w-4 h-4 text-purple-400 shrink-0" />
-                        <span>Video Ses Dökümü (Script)</span>
+                        <span>
+                          {scriptLang === 'orig' ? '🌐 Orijinal İçerik / Konuşma Metni' : '🇹🇷 Video Ses Dökümü (Script)'}
+                        </span>
+                        {hasOriginalOption && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-900/50 text-purple-300 border border-purple-700/40 font-semibold">
+                            {scriptLang === 'orig' ? 'Orijinal' : 'Türkçe'}
+                          </span>
+                        )}
                       </div>
-                      {transcript && (
+                      {displayedScript && (
                         <p className="text-[11px] text-zinc-400 mt-0.5">
-                          📝 Yaklaşık {scriptWords} kelime • ⏱ {scriptReadTimeMinutes} dk okuma
+                          📝 Yaklaşık {displayedWords} kelime • ⏱ {displayedReadTime} dk okuma
                         </p>
                       )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
+                      {/* Language Switcher for Foreign/Translated Content */}
+                      {hasOriginalOption && transcript && !isEditingScript && (
+                        <div className="flex items-center bg-black/70 p-0.5 rounded-xl border border-white/10 text-xs shadow-inner">
+                          <button
+                            type="button"
+                            onClick={() => setScriptLang('tr')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                              scriptLang === 'tr'
+                                ? 'bg-purple-600 text-white shadow-sm'
+                                : 'text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            🇹🇷 Türkçe
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setScriptLang('orig')}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
+                              scriptLang === 'orig'
+                                ? 'bg-zinc-700 text-white shadow-sm'
+                                : 'text-zinc-400 hover:text-white'
+                            }`}
+                            title="Orijinal yabancı dildeki metni göster"
+                          >
+                            <Globe className="w-3 h-3 text-cyan-400" />
+                            <span>Orijinalini Göster</span>
+                          </button>
+                        </div>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => handleTranscribeVideo()}
@@ -905,11 +975,11 @@ function ItemDetailModalContent({
                         <Key className="w-3.5 h-3.5" />
                       </button>
 
-                      {transcript && !isEditingScript && (
+                      {displayedScript && !isEditingScript && (
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard.writeText(transcript)
+                            navigator.clipboard.writeText(displayedScript)
                             setTranscriptCopied(true)
                             setTimeout(() => setTranscriptCopied(false), 2500)
                           }}
@@ -928,7 +998,7 @@ function ItemDetailModalContent({
                               handleSaveEditedScript()
                             } else {
                               setIsEditingScript(true)
-                              setEditedScript(transcript)
+                              setEditedScript(displayedScript || transcript)
                             }
                           }}
                           className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors border cursor-pointer ${
@@ -1045,7 +1115,7 @@ function ItemDetailModalContent({
                 )}
 
                 {/* Transcript Body or Empty State */}
-                {!isTranscribing && transcript ? (
+                {!isTranscribing && (displayedScript || transcript) ? (
                   isEditingScript ? (
                     <div className="space-y-2">
                       <textarea
@@ -1074,7 +1144,22 @@ function ItemDetailModalContent({
                     </div>
                   ) : (
                     <div className="p-4 rounded-2xl bg-black/50 border border-purple-900/30 text-xs text-purple-100/90 leading-relaxed max-h-[380px] overflow-y-auto whitespace-pre-wrap font-sans selection:bg-purple-500/30 space-y-2 scrollbar-thin">
-                      {transcript.split('\n').map((paragraph, idx) => {
+                      {scriptLang === 'orig' && (
+                        <div className="p-2.5 mb-2 rounded-xl bg-cyan-950/40 border border-cyan-800/50 text-[11px] text-cyan-200 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <Globe className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span>Orijinal Dildeki Metin / Konuşma Dökümü</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setScriptLang('tr')}
+                            className="text-[10px] text-cyan-300 hover:text-white font-semibold underline cursor-pointer"
+                          >
+                            🇹🇷 Türkçe Çeviriyi Göster
+                          </button>
+                        </div>
+                      )}
+                      {(displayedScript || transcript || '').split('\n').map((paragraph, idx) => {
                         const isQueryMatch = scriptSearchQuery.trim() && paragraph.toLowerCase().includes(scriptSearchQuery.toLowerCase())
                         return (
                           <p

@@ -302,6 +302,8 @@ async function processBookmarkBackground(
 
     // 2. Audio & Video Script Transcription (Gemini / Whisper)
     let transcriptText: string | null = null
+    let originalTranscriptText: string | null = null
+    let isTranslatedContent: boolean = false
     const isVideoOrReel = finalMediaType === 'video' || url.includes('/reel/') || url.includes('/reels/') || platform === 'tiktok' || platform === 'youtube'
     if (isVideoOrReel) {
       try {
@@ -313,6 +315,8 @@ async function processBookmarkBackground(
           platform,
         })
         transcriptText = transcribeResult.transcript
+        originalTranscriptText = transcribeResult.originalTranscript || null
+        isTranslatedContent = Boolean(transcribeResult.isTranslated)
       } catch (trErr) {
         console.warn('[Ingest] Video transcription warning:', trErr)
       }
@@ -326,6 +330,12 @@ async function processBookmarkBackground(
     const embedding = await generateEmbedding(textToEmbed)
 
     // 5. Update Bookmark to Completed Status
+    const mergedActionableData = {
+      ...(typeof extraction.actionable_data === 'object' && extraction.actionable_data !== null ? extraction.actionable_data : {}),
+      ...(originalTranscriptText ? { original_transcript: originalTranscriptText } : {}),
+      is_translated: isTranslatedContent,
+    }
+
     const updatePayload: Record<string, unknown> = {
       author_username: realAuthor.username,
       author_name: realAuthor.name || finalTitle.slice(0, 100),
@@ -340,7 +350,7 @@ async function processBookmarkBackground(
         transcript: Boolean(transcriptText),
       },
       category: extraction.category,
-      actionable_data: extraction.actionable_data,
+      actionable_data: mergedActionableData,
       transcript: transcriptText,
       status: 'completed',
       error_message: null,

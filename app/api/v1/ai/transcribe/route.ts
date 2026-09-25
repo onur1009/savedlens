@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     if (user) {
       const { data } = await admin
         .from('bookmarks')
-        .select('id, user_id, permalink, caption, author_name, author_username, media_type, media_urls, stored_media_urls, platform, extractors')
+        .select('id, user_id, permalink, caption, author_name, author_username, media_type, media_urls, stored_media_urls, platform, extractors, actionable_data')
         .eq('id', bookmark_id)
         .eq('user_id', user.id)
         .maybeSingle()
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     if (!bm) {
       const { data, error: fetchErr } = await admin
         .from('bookmarks')
-        .select('id, user_id, permalink, caption, author_name, author_username, media_type, media_urls, stored_media_urls, platform, extractors')
+        .select('id, user_id, permalink, caption, author_name, author_username, media_type, media_urls, stored_media_urls, platform, extractors, actionable_data')
         .eq('id', bookmark_id)
         .maybeSingle()
 
@@ -53,6 +53,8 @@ export async function POST(request: Request) {
 
     const effectiveApiKey = clientApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY
     let finalTranscript: string | null = null
+    let finalOriginalTranscript: string | null = null
+    let isTranslated: boolean = false
     let source: string = 'ai_script_generator'
 
     // 2. If user uploaded a direct audio/video clip
@@ -67,11 +69,13 @@ export async function POST(request: Request) {
         const genAI = new GoogleGenerativeAI(effectiveApiKey)
         const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
-        const prompt = `Aşağıdaki ses/video kaydını dinle ve içindeki tüm Türkçe konuşmaları eksiksiz, temiz ve akıcı bir "Video Scripti / Konuşma Dökümü" olarak metne aktar.
+        const prompt = `Aşağıdaki ses/video kaydını dinle ve içindeki konuşmaları döküme aktar.
 Kurallar:
-1. Konuşmacının söylediklerini birebir ve anlam bütünlüğünü koruyarak yaz.
-2. Varsa adımları, ipuçlarını veya tarif listesini paragraflar halinde düzenle.
-3. Sadece konuşma scripti metnini yaz, başına veya sonuna ekstra açıklama ekleme.`
+1. Videodaki konuşma yabancı dilde ise (İngilizce vb.), konuşmaları akıcı, doğal ve eksiksiz bir şekilde TÜRKÇE "Video Scripti / Konuşma Dökümü" olarak yaz.
+Ardından tam altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına videoda duyulan orijinal yabancı dildeki konuşma dökümünü yaz.
+2. Videodaki konuşma zaten Türkçe ise, doğrudan Türkçe konuşma scriptini yaz (ayraç ekleme).
+3. Varsa adımları, ipuçlarını veya tarif listesini paragraflar halinde düzenle.
+4. Sadece konuşma scripti metnini yaz, başına veya sonuna ekstra açıklama ekleme.`
 
         const result = await model.generateContent([
           prompt,
@@ -85,7 +89,16 @@ Kurallar:
 
         const text = result.response.text()?.trim()
         if (text && text.length > 10) {
-          finalTranscript = text
+          if (text.includes('---ORIGINAL_TRANSCRIPT---')) {
+            const parts = text.split('---ORIGINAL_TRANSCRIPT---')
+            finalTranscript = parts[0].trim()
+            finalOriginalTranscript = parts[1]?.trim() || null
+            isTranslated = true
+          } else {
+            finalTranscript = text
+            finalOriginalTranscript = null
+            isTranslated = false
+          }
           source = 'direct_user_audio'
         }
       } catch (uploadErr) {
@@ -113,6 +126,8 @@ Kurallar:
       })
 
       finalTranscript = transcribeResult.transcript
+      finalOriginalTranscript = transcribeResult.originalTranscript || null
+      isTranslated = Boolean(transcribeResult.isTranslated)
       source = transcribeResult.source || 'ai_contextual_script'
     }
 
@@ -128,11 +143,18 @@ Kurallar:
       transcript: true,
     }
 
+    const updatedActionableData = {
+      ...(typeof bm.actionable_data === 'object' && bm.actionable_data !== null ? bm.actionable_data : {}),
+      ...(finalOriginalTranscript ? { original_transcript: finalOriginalTranscript } : {}),
+      is_translated: isTranslated,
+    }
+
     const { error: updateErr } = await admin
       .from('bookmarks')
       .update({
         transcript: finalTranscript,
         extractors: updatedExtractors,
+        actionable_data: updatedActionableData,
         updated_at: new Date().toISOString(),
       })
       .eq('id', bookmark_id)
@@ -144,8 +166,12 @@ Kurallar:
     return NextResponse.json({
       success: true,
       transcript: finalTranscript,
+      original_transcript: finalOriginalTranscript,
+      is_translated: isTranslated,
       source,
-      message: 'Video dinlendi ve konuşma scripti başarıyla oluşturuldu! 🎉',
+      message: isTranslated
+        ? 'Video dinlendi, Türkçe seslendirme metnine çevrildi ve orijinal metin korundu! 🇹🇷'
+        : 'Video dinlendi ve konuşma scripti başarıyla oluşturuldu! 🎉',
     })
   } catch (err) {
     console.error('[Transcribe Route Error]:', err)

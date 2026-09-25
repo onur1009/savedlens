@@ -48,6 +48,8 @@ export async function POST(request: Request) {
     }
 
     // 2. Automatically generate / extract transcript if missing
+    let originalTranscriptText: string | null = null
+    let isTranslatedContent: boolean = false
     if (!transcriptText && parsed.data.bookmark_id) {
       try {
         const { transcribeVideoToScript } = await import('@/lib/ai/video-transcriber')
@@ -61,6 +63,8 @@ export async function POST(request: Request) {
         })
         if (transcribeResult.transcript) {
           transcriptText = transcribeResult.transcript
+          originalTranscriptText = transcribeResult.originalTranscript || null
+          isTranslatedContent = Boolean(transcribeResult.isTranslated)
         }
       } catch (trErr) {
         console.warn('[autotag] Automatic video transcription warning:', trErr)
@@ -104,6 +108,12 @@ export async function POST(request: Request) {
       }
     }
 
+    const mergedActionableData = {
+      ...(typeof result.actionable_data === 'object' && result.actionable_data !== null ? result.actionable_data : {}),
+      ...(originalTranscriptText ? { original_transcript: originalTranscriptText } : {}),
+      is_translated: isTranslatedContent,
+    }
+
     // 5. If online and bookmark_id provided, persist category and script to database
     if (parsed.data.bookmark_id && isSupabaseConfigured()) {
       try {
@@ -119,7 +129,7 @@ export async function POST(request: Request) {
               ...result.extractors,
               transcript: Boolean(transcriptText),
             },
-            actionable_data: result.actionable_data,
+            actionable_data: mergedActionableData,
             transcript: transcriptText,
             updated_at: new Date().toISOString(),
           })
@@ -135,11 +145,13 @@ export async function POST(request: Request) {
       summary: finalSummary,
       tags: finalTags,
       transcript: transcriptText,
+      original_transcript: originalTranscriptText,
+      is_translated: isTranslatedContent,
       extractors: {
         ...result.extractors,
         transcript: Boolean(transcriptText),
       },
-      actionable_data: result.actionable_data,
+      actionable_data: mergedActionableData,
     })
   } catch (err) {
     console.error('AI Auto-tag error:', err)

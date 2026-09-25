@@ -9,8 +9,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export interface TranscribeResult {
   transcript: string | null
+  originalTranscript?: string | null
+  isTranslated?: boolean
   isTranscribed: boolean
-  source?: 'audio_stream' | 'ai_multimodal' | 'ai_contextual_script'
+  source?: 'audio_stream' | 'ai_multimodal' | 'ai_contextual_script' | 'direct_user_audio'
 }
 
 export interface TranscribeOptions {
@@ -23,7 +25,20 @@ export interface TranscribeOptions {
 }
 
 /**
+ * Checks if a text is in a foreign language (English, etc.)
+ */
+export function isForeignText(text: string | null | undefined): boolean {
+  if (!text || text.length < 15) return false
+  const lower = text.toLowerCase()
+  const trMatches = lower.match(/\b(ve|bir|için|icin|ile|bu|çok|cok|da|de|ne|var|yok|gibi|kadar|nasıl|nasil|bunu|şöyle|soyle|tarif|yemek|gün|gun)\b|[çğıöşü]/g) || []
+  const enMatches = lower.match(/\b(the|and|is|in|to|of|for|with|this|that|you|it|on|how|recipe|make|easy|best|day|from|food|video|tips|watch|new)\b/g) || []
+  return enMatches.length > trMatches.length && enMatches.length >= 2
+}
+
+/**
  * Main entry point: transcribes audio from video into a script.
+ * For foreign videos, produces a natural Turkish voiceover script as primary,
+ * while preserving the original foreign transcript for toggling.
  */
 export async function transcribeVideoToScript(
   options: TranscribeOptions
@@ -50,6 +65,8 @@ export async function transcribeVideoToScript(
       if (audioResult && audioResult.transcript) {
         return {
           transcript: audioResult.transcript,
+          originalTranscript: audioResult.originalTranscript || (caption && isForeignText(caption) ? caption : null),
+          isTranslated: Boolean(audioResult.isTranslated || (caption && isForeignText(caption))),
           isTranscribed: true,
           source: 'audio_stream',
         }
@@ -64,7 +81,9 @@ export async function transcribeVideoToScript(
   const aiScript = await generateScriptFromContext(title, caption, platform, apiKeyOverride)
   if (aiScript) {
     return {
-      transcript: aiScript,
+      transcript: aiScript.turkishScript,
+      originalTranscript: aiScript.originalScript,
+      isTranslated: aiScript.isTranslated,
       isTranscribed: true,
       source: 'ai_contextual_script',
     }
@@ -122,11 +141,13 @@ async function transcribeFromDirectAudioUrl(url: string, apiKeyOverride?: string
         const genAI = new GoogleGenerativeAI(geminiKey)
         const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
-        const prompt = `Aşağıdaki ses/video kaydını dinle ve içindeki tüm Türkçe konuşmaları eksiksiz, temiz ve akıcı bir "Video Scripti / Konuşma Dökümü" olarak metne aktar.
+        const prompt = `Aşağıdaki ses/video kaydını dinle ve içindeki konuşmaları döküme aktar.
 Kurallar:
-1. Konuşmacının söylediklerini birebir ve anlam bütünlüğünü koruyarak yaz.
-2. Varsa adımları, ipuçlarını veya tarif listesini paragraflar halinde düzenle.
-3. Sadece konuşma scripti metnini yaz, başına veya sonuna ekstra açıklama ekleme.`
+1. Videodaki konuşma yabancı dilde ise (İngilizce vb.), konuşmaları akıcı, doğal ve eksiksiz bir şekilde TÜRKÇE "Video Scripti / Konuşma Dökümü" olarak yaz.
+Ardından tam altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına videoda duyulan orijinal yabancı dildeki konuşma dökümünü yaz.
+2. Videodaki konuşma zaten Türkçe ise, doğrudan Türkçe konuşma scriptini yaz (ayraç ekleme).
+3. Varsa adımları, ipuçlarını veya tarif listesini paragraflar halinde düzenle.
+4. Sadece konuşma scripti metnini yaz, başına veya sonuna ekstra selamlama/açıklama ekleme.`
 
         const mime = contentType.includes('video') ? 'video/mp4' : 'audio/mp3'
         const result = await model.generateContent([
@@ -140,9 +161,21 @@ Kurallar:
         ])
 
         const text = result.response.text()?.trim()
-        if (text && text.length > 15) {
+        if (text && text.length > 10) {
+          if (text.includes('---ORIGINAL_TRANSCRIPT---')) {
+            const [trPart, origPart] = text.split('---ORIGINAL_TRANSCRIPT---')
+            return {
+              transcript: trPart.trim(),
+              originalTranscript: origPart?.trim() || null,
+              isTranslated: true,
+              isTranscribed: true,
+              source: 'ai_multimodal',
+            }
+          }
           return {
             transcript: text,
+            originalTranscript: null,
+            isTranslated: false,
             isTranscribed: true,
             source: 'ai_multimodal',
           }
@@ -167,13 +200,18 @@ Kurallar:
 /**
  * Generates an accurate, comprehensive spoken video voiceover script
  * from post context (caption, steps, author, topic) when audio stream is protected.
+ * Translates foreign content into Turkish while preserving original transcript.
  */
 async function generateScriptFromContext(
   title: string | null | undefined,
   caption: string | null | undefined,
   platform?: string | null,
   apiKeyOverride?: string | null
-): Promise<string | null> {
+): Promise<{
+  turkishScript: string
+  originalScript?: string | null
+  isTranslated?: boolean
+} | null> {
   const geminiKey = apiKeyOverride || process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY
 
   if (geminiKey && !geminiKey.includes('your-') && geminiKey.length > 10) {
@@ -196,15 +234,32 @@ GÖNDERİ AÇIKLAMASI: ${caption || 'Açıklama bulunmuyor'}
 
 KURALLAR:
 1. Videoda sanki içerik üreticisi konuşuyormuş gibi doğal, akıcı ve birinci tekil şahıs ("ben", "yapıyoruz", "gösteriyorum") veya samimi anlatıcı diliyle yaz.
-2. Açıklamadaki tüm püf noktalarını, malzemeleri veya adımları konuşma diline yedir.
-3. Paragraflara ayırarak okunaklı yap.
-4. Başlık veya ekstra meta bilgi ekleme, doğrudan konuşma scriptini başlat.`
+2. ÇOK ÖNEMLİ: Eğer gönderi başlığı veya açıklaması yabancı bir dildeyse (İngilizce vb.), MUTLAKA VE KESİNLİKLE TÜRKÇEYE ÇEVİREREK akıcı ve doğal bir Türkçe seslendirme scripti oluştur.
+3. Eğer içerik yabancı dildeyse, Türkçe scriptin hemen altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına orijinal yabancı dildeki konuşma/açıklama metnini yaz.
+4. Eğer içerik zaten Türkçe ise, doğrudan Türkçe scripti yaz ve ayraç ekleme.
+5. Açıklamadaki tüm püf noktalarını, malzemeleri veya adımları konuşma diline yedir.
+6. Paragraflara ayırarak okunaklı yap.
+7. Başlık veya ekstra meta bilgi ekleme, doğrudan konuşma scriptini başlat.`
 
       const result = await model.generateContent(prompt)
-      const script = result.response.text()?.trim()
+      const rawText = result.response.text()?.trim()
 
-      if (script && script.length > 10) {
-        return script
+      if (rawText && rawText.length > 10) {
+        if (rawText.includes('---ORIGINAL_TRANSCRIPT---')) {
+          const parts = rawText.split('---ORIGINAL_TRANSCRIPT---')
+          return {
+            turkishScript: parts[0].trim(),
+            originalScript: parts[1]?.trim() || caption || null,
+            isTranslated: true,
+          }
+        }
+
+        const isForeign = isForeignText(caption) || isForeignText(title)
+        return {
+          turkishScript: rawText,
+          originalScript: isForeign ? (caption || title || null) : null,
+          isTranslated: isForeign,
+        }
       }
     } catch (err) {
       console.warn('[VideoTranscriber] Context script generation error:', err)
@@ -214,6 +269,7 @@ KURALLAR:
   // ── Robust Intelligent Offline Script Builder ──────────────────
   const rawCaption = (caption || '').trim()
   const rawTitle = (title || '').trim()
+  const isForeign = isForeignText(rawCaption) || isForeignText(rawTitle)
 
   // Extract hashtags before cleaning
   const extractedTags = (rawCaption.match(/#([\w\u00C0-\u017F]+)/g) || []).map((t) => t.replace('#', ''))
@@ -251,5 +307,9 @@ KURALLAR:
 
   scriptParagraphs.push(`Daha fazlası için kaydetmeyi ve takip etmeyi unutmayın!`)
 
-  return scriptParagraphs.join('\n\n')
+  return {
+    turkishScript: scriptParagraphs.join('\n\n'),
+    originalScript: isForeign ? (rawCaption || rawTitle || null) : null,
+    isTranslated: isForeign,
+  }
 }

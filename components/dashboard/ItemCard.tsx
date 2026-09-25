@@ -25,6 +25,7 @@ import {
   Trash2,
   TrendingUp,
   Lightbulb,
+  Globe,
 } from 'lucide-react'
 import { useState, memo } from 'react'
 
@@ -107,6 +108,12 @@ const ItemCard = memo(function ItemCard({
   const [imgError, setImgError] = useState(false)
   const [copiedRecipe, setCopiedRecipe] = useState(false)
   const [copiedTranscript, setCopiedTranscript] = useState(false)
+  const [showOriginal, setShowOriginal] = useState(false)
+
+  const cardActData = (item.actionable_data || {}) as Record<string, unknown>
+  const cardOriginalTranscript = cardActData.original_transcript ? String(cardActData.original_transcript) : null
+  const isCardTranslated = Boolean(cardActData.is_translated || cardOriginalTranscript)
+  const cardOriginalText = cardOriginalTranscript || (isCardTranslated && item.description ? item.description : null)
 
   const platform = item.platform?.toLowerCase() ?? 'web'
   const platformColor = PLATFORM_COLORS[platform] ?? '#7c5cfc'
@@ -122,8 +129,9 @@ const ItemCard = memo(function ItemCard({
 
   function handleCopyTranscript(e: React.MouseEvent) {
     e.stopPropagation()
-    if (!item.transcript) return
-    navigator.clipboard.writeText(item.transcript)
+    const textToCopy = showOriginal && cardOriginalText ? cardOriginalText : item.transcript
+    if (!textToCopy) return
+    navigator.clipboard.writeText(textToCopy)
     setCopiedTranscript(true)
     setTimeout(() => setCopiedTranscript(false), 2500)
   }
@@ -548,34 +556,57 @@ const ItemCard = memo(function ItemCard({
             </p>
           )}
 
-          {/* Transcript snippet with quick copy */}
+          {/* Transcript snippet with quick copy & original toggle */}
           {Boolean(item.transcript) && (
             <div className="text-[11px] text-purple-200/90 leading-relaxed bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-purple-950/20 p-2.5 rounded-xl border border-purple-500/25 font-sans">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-semibold text-purple-400 flex items-center gap-1">
-                  <Mic2 className="w-3 h-3 text-purple-300" />
-                  <span>Konuşma Dökümü</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyTranscript}
-                  className="text-[10px] text-purple-300 hover:text-white flex items-center gap-1 bg-purple-900/40 hover:bg-purple-800/80 px-2 py-0.5 rounded-md border border-purple-500/30 transition-all cursor-pointer"
-                  title="Scripti panoya kopyala"
-                >
-                  {copiedTranscript ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span className="text-emerald-300 font-semibold">Kopyalandı!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span>Kopyala</span>
-                    </>
+              <div className="flex items-center justify-between mb-1 gap-1">
+                <span className="text-[10px] font-semibold text-purple-400 flex items-center gap-1 min-w-0">
+                  <Mic2 className="w-3 h-3 text-purple-300 shrink-0" />
+                  <span className="truncate">{showOriginal ? 'Orijinal Metin' : (isCardTranslated ? 'Türkçe Script' : 'Konuşma Dökümü')}</span>
+                  {isCardTranslated && (
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-purple-900/60 text-purple-200 border border-purple-700/40 shrink-0">
+                      🇹🇷 Çeviri
+                    </span>
                   )}
-                </button>
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {cardOriginalText && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowOriginal(!showOriginal)
+                      }}
+                      className="text-[10px] text-cyan-300 hover:text-white flex items-center gap-0.5 bg-cyan-950/50 hover:bg-cyan-900/70 px-1.5 py-0.5 rounded-md border border-cyan-500/40 transition-all cursor-pointer font-medium"
+                      title={showOriginal ? 'Türkçe Çeviriyi Göster' : 'Orijinal Yabancı Metni Göster'}
+                    >
+                      <Globe className="w-2.5 h-2.5 text-cyan-400" />
+                      <span>{showOriginal ? '🇹🇷 TR' : '🌐 Orijinal'}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleCopyTranscript}
+                    className="text-[10px] text-purple-300 hover:text-white flex items-center gap-1 bg-purple-900/40 hover:bg-purple-800/80 px-2 py-0.5 rounded-md border border-purple-500/30 transition-all cursor-pointer"
+                    title="Scripti panoya kopyala"
+                  >
+                    {copiedTranscript ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span className="text-emerald-300 font-semibold">Kopyalandı!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Kopyala</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-              <p className="italic text-zinc-300 line-clamp-2">&ldquo;{item.transcript?.slice(0, 110)}...&rdquo;</p>
+              <p className="italic text-zinc-300 line-clamp-2">
+                &ldquo;{((showOriginal && cardOriginalText ? cardOriginalText : item.transcript) || '').slice(0, 110)}...&rdquo;
+              </p>
             </div>
           )}
 
