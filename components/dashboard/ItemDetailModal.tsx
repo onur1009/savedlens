@@ -403,11 +403,17 @@ function ItemDetailModalContent({
           setCurrentCategory(data.category)
         }
 
+        if (data.transcript) {
+          setTranscript(data.transcript)
+          setEditedScript(data.transcript)
+        }
+
         const updatedItem = {
           ...item,
           category: data.category || item.category,
           summary: data.summary || item.summary,
           tags: mergedTags,
+          transcript: data.transcript || transcript || item.transcript,
           extractors: data.extractors || item.extractors,
           actionable_data: data.actionable_data || item.actionable_data,
         }
@@ -416,7 +422,7 @@ function ItemDetailModalContent({
           onItemUpdated(updatedItem)
         }
 
-        setAutoCatMessage('✨ Yapay zeka ile otomatik kategorize edildi ve güncellendi!')
+        setAutoCatMessage('✨ Yapay zeka ile ses deşifre edildi, analiz edildi ve kategorize edildi!')
         setTimeout(() => setAutoCatMessage(null), 5000)
       }
     } catch (err) {

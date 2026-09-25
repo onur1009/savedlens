@@ -16,6 +16,7 @@ interface BookmarkUpdateRow {
   ai_summary: string
   ai_tags: string[]
   extractors: Record<string, unknown>
+  transcript?: string | null
   status: string
   updated_at: string
 }
@@ -24,6 +25,7 @@ interface PatchData {
   category: string
   summary: string
   tags: string[]
+  transcript?: string | null
   collection_id: string | null
   collection_name: string | null
   collection_color: string | null
@@ -51,10 +53,14 @@ export async function POST(request: Request) {
       author_username: string | null
       author_name: string | null
       extractors: Record<string, unknown> | null
+      transcript: string | null
+      media_type: string | null
+      media_urls: string[] | null
+      stored_media_urls: string[] | null
     }>(
       supabase,
       user.id,
-      'id, user_id, platform, permalink, caption, author_username, author_name, extractors'
+      'id, user_id, platform, permalink, caption, author_username, author_name, extractors, transcript, media_type, media_urls, stored_media_urls'
     )
 
     if (!bookmarks || bookmarks.length === 0) {
@@ -79,7 +85,37 @@ export async function POST(request: Request) {
       colMap.set(c.name.toLowerCase().trim(), c)
     }
 
-    // 3. Try Gemini AI categorization first
+    // 3. Pre-extract/prepare voiceover scripts for video items so AI categorizer uses speech content
+    const { transcribeVideoToScript } = await import('@/lib/ai/video-transcriber')
+    const generatedTranscriptMap = new Map<string, string>()
+
+    for (const b of bookmarks) {
+      if (b.transcript) {
+        generatedTranscriptMap.set(b.id, b.transcript)
+      } else {
+        const isVideo = b.media_type === 'video' || b.permalink.includes('/reel/') || b.permalink.includes('/reels/') || b.platform === 'tiktok' || b.platform === 'youtube'
+        if (isVideo) {
+          try {
+            const mediaUrl = (b.stored_media_urls && b.stored_media_urls[0]) || (b.media_urls && b.media_urls[0]) || null
+            const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, extractRealAuthor(b.caption, b.author_username || b.author_name).name)
+            const trRes = await transcribeVideoToScript({
+              mediaUrl,
+              storedMediaUrls: b.stored_media_urls,
+              title: cleanTitle,
+              caption: b.caption,
+              platform: b.platform,
+            })
+            if (trRes.transcript) {
+              generatedTranscriptMap.set(b.id, trRes.transcript)
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+
+    // 4. Try Gemini AI categorization with transcript data
     let useGemini = false
     let geminiResults = new Map<string, { category: string; collectionName: string; confidence: number; summary: string; tags: string[]; reasoning: string }>()
 
@@ -94,6 +130,7 @@ export async function POST(request: Request) {
           id: b.id,
           caption: b.caption,
           title: formatBookmarkTitle(b.caption, b.permalink, extractRealAuthor(b.caption, b.author_username || b.author_name).name),
+          transcript: generatedTranscriptMap.get(b.id) || b.transcript || null,
           author: b.author_username || b.author_name,
           hashtags: extractHashtags(b.caption || ''),
           permalink: b.permalink,
@@ -106,10 +143,11 @@ export async function POST(request: Request) {
       console.warn('[batch-categorize] Gemini unavailable, using regex fallback:', err instanceof Error ? err.message : String(err))
     }
 
-    // 4. Build category plans — Gemini results + regex fallback for uncategorized
+    // 5. Build category plans — Gemini results + regex fallback for uncategorized
     const missingColsMap = new Map<string, { name: string; color: string; icon: string }>()
     const plannedBookmarks: Array<{
       b: (typeof bookmarks)[0]
+      finalTranscript: string | null
       category: string
       collectionName: string
       collectionColor: string
@@ -173,10 +211,11 @@ export async function POST(request: Request) {
           }
         }
       } else {
-        // Fallback to regex-based categorization
+        // Fallback to regex-based categorization with transcript awareness
         const realAuthor = extractRealAuthor(b.caption, b.author_username || b.author_name)
         const cleanTitle = formatBookmarkTitle(b.caption, b.permalink, realAuthor.name)
-        const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username, existingCols || [])
+        const finalTranscript = generatedTranscriptMap.get(b.id) || b.transcript || null
+        const plan = planSmartCategory(cleanTitle, b.caption, realAuthor.username, existingCols || [], finalTranscript)
         category = plan.category
         collectionName = plan.collectionName
         collectionColor = plan.collectionColor
@@ -186,9 +225,11 @@ export async function POST(request: Request) {
         extractors = plan.extractors as Record<string, boolean>
       }
 
+      const finalTranscript = generatedTranscriptMap.get(b.id) || b.transcript || null
       const targetColKey = collectionName.toLowerCase().trim()
       plannedBookmarks.push({
         b,
+        finalTranscript,
         category,
         collectionName,
         collectionColor,
@@ -276,9 +317,11 @@ export async function POST(request: Request) {
         category: planned.category,
         ai_summary: planned.summary,
         ai_tags: planned.tags,
+        transcript: planned.finalTranscript,
         extractors: {
           ...(b.extractors || {}),
           ...planned.extractors,
+          transcript: Boolean(planned.finalTranscript),
         },
         status: 'completed',
         updated_at: nowIso,
@@ -288,6 +331,7 @@ export async function POST(request: Request) {
         category: planned.category,
         summary: planned.summary,
         tags: planned.tags,
+        transcript: planned.finalTranscript,
         collection_id: colRecord?.id || null,
         collection_name: colRecord?.name || null,
         collection_color: colRecord?.color || null,

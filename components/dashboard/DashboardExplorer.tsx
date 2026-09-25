@@ -666,6 +666,11 @@ export default function DashboardExplorer({
                 category: patch.category || item.category,
                 summary: patch.summary || item.summary,
                 tags: patch.tags || item.tags,
+                transcript: patch.transcript || item.transcript,
+                extractors: {
+                  ...(item.extractors || {}),
+                  transcript: Boolean(patch.transcript || item.transcript),
+                },
                 collection_id: patch.collection_id || item.collection_id,
                 collection_name: patch.collection_name || item.collection_name,
                 collection_color: patch.collection_color || item.collection_color,

@@ -24,6 +24,7 @@ export interface CategorizationInput {
   id: string
   caption: string | null
   title: string | null
+  transcript?: string | null
   author?: string | null
   hashtags?: string[]
   permalink?: string | null
@@ -142,7 +143,7 @@ function buildCategorizationPrompt(
   }
 
   return `Sen sosyal medya gönderilerini kategorize eden bir Türkçe AI asistansın. 
-Görevin: Gönderilerin açıklama metni, başlığı ve hashtaglerini DERİNLEMESİNE analiz ederek en doğru kategoriyi belirlemek.
+Görevin: Gönderilerin açıklama metni, başlığı, varsa video konuşma metni (script) ve hashtaglerini DERİNLEMESİNE analiz ederek en doğru kategoriyi belirlemek.
 
 MEVCUT KATEGORİLER:
 ${categoriesList}
@@ -150,14 +151,15 @@ ${categoriesList}
 
 KURALLAR:
 1. Kullanıcının özel koleksiyonları varsa MUTLAKA bunları öncelikli değerlendir. Eğer gönderi bir özel koleksiyonla güçlü eşleşiyorsa onu seç.
-2. Gönderinin bağlamını anla — sadece kelimelere bakma, CÜMLENİN ANLAMINI kavra.
-3. Bir tarif gönderisini asla "kodlama" veya "ürün" kategorisine koyma.
-4. Doktor/sağlık içeriklerini mutlaka "health" kategorisine koy.
-5. Emin değilsen "other" yerine en yakın kategoriyi seç (güven skoru düşük olabilir).
-6. Türkçe ve İngilizce karışık içerikleri anlayabilmelisin.
-7. Hashtagler çok güçlü ipuçlarıdır — bunlara büyük önem ver.
-8. Summary'yi Türkçe yaz ve içeriği özetleyen kısa, anlamlı bir cümle olsun.
-9. Tags dizisi en fazla 7 eleman içersin ve gönderinin konusunu yansıtsın.
+2. Varsa "Video Konuşma Metni / Script" alanını EN ÖNCELİKLİ ve güvenilir kaynak olarak değerlendir (özellikle video/reels gönderilerinde açıklamalar boş veya sadece hashtag olduğunda konuşma metni asıl içeriği verir).
+3. Gönderinin bağlamını anla — sadece kelimelere bakma, CÜMLENİN ANLAMINI kavra.
+4. Bir tarif gönderisini asla "kodlama" veya "ürün" kategorisine koyma.
+5. Doktor/sağlık içeriklerini mutlaka "health" kategorisine koy.
+6. Emin değilsen "other" yerine en yakın kategoriyi seç (güven skoru düşük olabilir).
+7. Türkçe ve İngilizce karışık içerikleri anlayabilmelisin.
+8. Hashtagler çok güçlü ipuçlarıdır — bunlara büyük önem ver.
+9. Summary'yi Türkçe yaz ve içeriği özetleyen kısa, anlamlı bir cümle olsun.
+10. Tags dizisi en fazla 7 eleman içersin ve gönderinin konusunu yansıtsın.
 
 JSON YANIT FORMATI (başka bir şey yazma):
 {
@@ -165,9 +167,10 @@ JSON YANIT FORMATI (başka bir şey yazma):
   "collectionName": "Koleksiyon Adı (emoji ile)",
   "confidence": 0.0-1.0,
   "summary": "Gönderinin Türkçe özeti (1-2 cümle)",
-  "tags": ["etiket1", "etiket2", ...],
+  "tags": ["etiket1", "etiket2"],
   "reasoning": "Neden bu kategoriyi seçtiğinin kısa açıklaması"
-}`
+}
+`
 }
 
 /**
@@ -184,7 +187,8 @@ export async function categorizeWithGemini(
   
   const postContent = [
     input.title ? `Başlık: ${input.title}` : '',
-    input.caption ? `Açıklama: ${input.caption.slice(0, 2000)}` : '',
+    input.caption ? `Açıklama: ${input.caption.slice(0, 1500)}` : '',
+    input.transcript ? `Video Konuşma Metni / Script: ${input.transcript.slice(0, 2500)}` : '',
     input.hashtags?.length ? `Hashtagler: ${input.hashtags.map(h => '#' + h).join(' ')}` : '',
     input.author ? `Yazar: ${input.author}` : '',
     input.permalink ? `Link: ${input.permalink}` : '',
@@ -262,6 +266,7 @@ export async function batchCategorizeWithGemini(
               `[GÖNDERİ ${idx + 1} | ID: ${input.id}]`,
               input.title ? `Başlık: ${input.title}` : '',
               input.caption ? `Açıklama: ${input.caption.slice(0, 800)}` : '',
+              input.transcript ? `Video Konuşma Metni / Script: ${input.transcript.slice(0, 1200)}` : '',
               input.hashtags?.length ? `Hashtagler: ${input.hashtags.map(h => '#' + h).join(' ')}` : '',
               input.author ? `Yazar: ${input.author}` : '',
             ]
@@ -339,10 +344,11 @@ ${categoriesList}
 
 KURALLAR:
 1. Kullanıcının özel koleksiyonları varsa MUTLAKA bunları öncelikli değerlendir.
-2. Gönderinin BAĞLAMINI ve ANLAMINI kavra — sadece kelimelere bakma.
-3. Hashtagler çok güçlü ipuçlarıdır.
-4. Summary'yi Türkçe yaz.
-5. Tags dizisi en fazla 7 eleman içersin.
+2. Varsa "Video Konuşma Metni / Script" alanını EN ÖNCELİKLİ ve güvenilir kaynak olarak kabul et (videodaki gerçek konuşma içeriğini yansıtır).
+3. Gönderinin BAĞLAMINI ve ANLAMINI kavra — sadece kelimelere bakma.
+4. Hashtagler çok güçlü ipuçlarıdır.
+5. Summary'yi Türkçe yaz.
+6. Tags dizisi en fazla 7 eleman içersin.
 
 JSON YANIT FORMATI (her gönderi için ID'yi anahtar olarak kullan):
 {

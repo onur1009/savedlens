@@ -372,7 +372,8 @@ async function processBookmarkBackground(
           candidateCaption,
           realAuthor.username,
           userCols || [],
-          bookmarkId
+          bookmarkId,
+          transcriptText
         )
         await assignBookmarkToSmartCollection(admin, currentBm.user_id, bookmarkId, plan)
       }

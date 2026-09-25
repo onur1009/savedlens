@@ -321,9 +321,10 @@ export function planSmartCategory(
   title: string | null | undefined,
   caption: string | null | undefined,
   author: string | null | undefined,
-  userCollections?: Array<{ id: string; name: string; color?: string | null; icon?: string | null }>
+  userCollections?: Array<{ id: string; name: string; color?: string | null; icon?: string | null }>,
+  transcript?: string | null
 ): SmartCategoryPlan {
-  const rawText = `${title || ''} ${caption || ''} ${author || ''}`
+  const rawText = `${title || ''} ${caption || ''} ${transcript || ''} ${author || ''}`
   const text = rawText.toLowerCase()
   const hashtags = extractHashtags(rawText)
 
@@ -524,19 +525,21 @@ export async function planSmartCategoryWithAI(
   caption: string | null | undefined,
   author: string | null | undefined,
   userCollections?: Array<{ id: string; name: string; color?: string | null; icon?: string | null }>,
-  bookmarkId?: string
+  bookmarkId?: string,
+  transcript?: string | null
 ): Promise<SmartCategoryPlan> {
   // Try Gemini first
   try {
     const { isGeminiAvailable, categorizeWithGemini } = await import('./gemini-categorizer')
 
     if (isGeminiAvailable()) {
-      const hashtags = extractHashtags(`${title || ''} ${caption || ''}`)
+      const hashtags = extractHashtags(`${title || ''} ${caption || ''} ${transcript || ''}`)
       const geminiResult = await categorizeWithGemini(
         {
           id: bookmarkId || 'temp',
           caption: caption || null,
           title: title || null,
+          transcript: transcript || null,
           author,
           hashtags,
         },
@@ -584,6 +587,6 @@ export async function planSmartCategoryWithAI(
   }
 
   // Fallback to regex-based categorization
-  return planSmartCategory(title, caption, author, userCollections)
+  return planSmartCategory(title, caption, author, userCollections, transcript)
 }
 
