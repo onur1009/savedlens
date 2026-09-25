@@ -53,7 +53,7 @@ interface SidebarCollection {
 const mainNav = [
   { href: '/', label: 'Ana Sayfa (Home)', icon: Home },
   { href: '/dashboard', label: 'Tüm Yer İmleri', icon: LayoutGrid, exact: true },
-  { href: '/dashboard?filter=transcript', label: '🎙️ Video Scriptleri', icon: Mic2, filterMatch: 'transcript' },
+  { href: '/dashboard?filter=transcript', label: '🎙️ Video Deşifreleri', icon: Mic2, filterMatch: 'transcript' },
   { href: '/dashboard?platform=instagram', label: 'Instagram Arşivi', icon: InstagramIcon, platformMatch: 'instagram' },
   { href: '/dashboard/collections', label: 'Koleksiyon Yönetimi', icon: FolderOpen },
   { href: '/dashboard/tags', label: 'Etiketler', icon: Tag },

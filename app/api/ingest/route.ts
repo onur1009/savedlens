@@ -322,17 +322,51 @@ async function processBookmarkBackground(
       }
     }
 
-    // 3. Category & Structured Data Extraction
-    const extraction = await extractStructuredData(finalTitle, candidateCaption, transcriptText)
+    // 2.5. Full Content Translation (Translate title, caption, and transcript into Turkish if foreign)
+    let translatedTitle = finalTitle
+    let translatedCaption = candidateCaption
+    let translatedTranscript = transcriptText
+
+    try {
+      const { isForeignText } = await import('@/lib/ai/video-transcriber')
+      if (isForeignText(candidateCaption) || isForeignText(finalTitle) || isForeignText(transcriptText)) {
+        const { translateBookmarkContent } = await import('@/lib/ai/translator')
+        const trResult = await translateBookmarkContent({
+          title: finalTitle,
+          caption: candidateCaption,
+          transcript: transcriptText,
+          platform,
+        })
+        translatedTitle = trResult.translatedTitle || finalTitle
+        translatedCaption = trResult.translatedCaption || candidateCaption
+        if (trResult.translatedTranscript) {
+          translatedTranscript = trResult.translatedTranscript
+        }
+        isTranslatedContent = true
+        if (!originalTranscriptText) {
+          originalTranscriptText = trResult.originalTranscript || transcriptText
+        }
+      }
+    } catch (trError) {
+      console.warn('[Ingest] Translation warning:', trError)
+    }
+
+    // 3. Category & Structured Data Extraction (using Turkish translated texts for better accuracy)
+    const extraction = await extractStructuredData(translatedTitle, translatedCaption, translatedTranscript || transcriptText)
 
     // 4. Vector Embedding Generation (RAG Recall Model)
-    const textToEmbed = `${finalTitle}\n${extraction.summary}\n${transcriptText || ''}\n${candidateCaption}`
+    const textToEmbed = `${translatedTitle}\n${extraction.summary}\n${translatedTranscript || transcriptText || ''}\n${translatedCaption}`
     const embedding = await generateEmbedding(textToEmbed)
 
     // 5. Update Bookmark to Completed Status
     const mergedActionableData = {
       ...(typeof extraction.actionable_data === 'object' && extraction.actionable_data !== null ? extraction.actionable_data : {}),
-      ...(originalTranscriptText ? { original_transcript: originalTranscriptText } : {}),
+      original_title: finalTitle,
+      original_caption: candidateCaption,
+      original_transcript: originalTranscriptText,
+      translated_title: translatedTitle,
+      translated_caption: translatedCaption,
+      translated_transcript: translatedTranscript,
       is_translated: isTranslatedContent,
     }
 

@@ -1083,7 +1083,7 @@ export default function DashboardExplorer({
             }`}
           >
             <Mic2 className="w-3.5 h-3.5 text-purple-400" />
-            <span>Scriptli Videolar</span>
+            <span>Deşifreli Videolar</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 font-bold">
               {items.filter((i) => Boolean(i.transcript) || i.extractors?.transcript).length}
             </span>

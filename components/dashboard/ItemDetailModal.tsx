@@ -44,6 +44,8 @@ import {
   Search,
   Volume2,
   Globe,
+  FileText,
+  Languages,
 } from 'lucide-react'
 import type { SavedItem } from '@/lib/mock-data'
 import { formatBookmarkTitle, extractRealAuthor, extractInstagramShortcode } from '@/lib/bookmark-formatter'
@@ -124,9 +126,18 @@ function ItemDetailModalContent({
   const [recipeCopied, setRecipeCopied] = useState(false)
   const [transcriptCopied, setTranscriptCopied] = useState(false)
   const [transcript, setTranscript] = useState<string | null>(item.transcript || null)
-  const initialOrig = (item.actionable_data as any)?.original_transcript || null
-  const [originalTranscript, setOriginalTranscript] = useState<string | null>(initialOrig)
-  const [scriptLang, setScriptLang] = useState<'tr' | 'orig'>('tr')
+  const actData = (item.actionable_data || {}) as Record<string, unknown>
+  const [translatedTitle, setTranslatedTitle] = useState<string | null>((actData.translated_title as string) || null)
+  const [translatedCaption, setTranslatedCaption] = useState<string | null>((actData.translated_caption as string) || null)
+  const [translatedTranscript, setTranslatedTranscript] = useState<string | null>((actData.translated_transcript as string) || null)
+  
+  const [originalTitle, setOriginalTitle] = useState<string | null>((actData.original_title as string) || item.title || null)
+  const [originalCaption, setOriginalCaption] = useState<string | null>((actData.original_caption as string) || item.description || null)
+  const [originalTranscript, setOriginalTranscript] = useState<string | null>((actData.original_transcript as string) || null)
+
+  const [viewLanguage, setViewLanguage] = useState<'tr' | 'orig'>('tr')
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [translateMessage, setTranslateMessage] = useState<string | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [transcribeMessage, setTranscribeMessage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -259,17 +270,95 @@ function ItemDetailModalContent({
     isVideoContent ? 'script' : 'summary'
   )
   const [scriptSearchQuery, setScriptSearchQuery] = useState('')
+
   const isForeignSource = Boolean(
     originalTranscript ||
     (item.actionable_data as any)?.is_translated ||
-    isForeignContent(item.description) ||
-    isForeignContent(item.title)
+    isForeignContent(originalCaption || item.description) ||
+    isForeignContent(originalTitle || item.title)
   )
-  const effectiveOriginalText = originalTranscript || (isForeignSource && item.description ? item.description : null)
-  const hasOriginalOption = Boolean(effectiveOriginalText)
-  const displayedScript = (scriptLang === 'orig' && effectiveOriginalText) ? effectiveOriginalText : transcript
+
+  const hasFullTranslation = Boolean(
+    translatedCaption ||
+    translatedTitle ||
+    translatedTranscript ||
+    ((item.actionable_data as any)?.is_translated && transcript)
+  )
+
+  const displayTitle = (viewLanguage === 'orig' && originalTitle)
+    ? originalTitle
+    : (translatedTitle || cleanTitle)
+
+  const displayCaption = (viewLanguage === 'orig' && originalCaption)
+    ? originalCaption
+    : (translatedCaption || item.description)
+
+  const effectiveOriginalTranscript = originalTranscript || (isForeignSource && originalCaption ? originalCaption : null)
+  const hasOriginalOption = Boolean(effectiveOriginalTranscript)
+
+  const displayedScript = (viewLanguage === 'orig' && effectiveOriginalTranscript)
+    ? effectiveOriginalTranscript
+    : (translatedTranscript || transcript)
+
   const displayedWords = displayedScript ? displayedScript.trim().split(/\s+/).filter(Boolean).length : 0
   const displayedReadTime = Math.max(1, Math.ceil(displayedWords / 130))
+
+  async function handleTranslatePost() {
+    setIsTranslating(true)
+    setTranslateMessage(null)
+    try {
+      const storedKey = typeof window !== 'undefined' ? localStorage.getItem('savedlens_gemini_key') || customKey : customKey
+      const res = await fetch('/api/v1/ai/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bookmark_id: item.id,
+          apiKey: storedKey ? storedKey.trim() : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTranslatedTitle(data.translated_title)
+        setTranslatedCaption(data.translated_caption)
+        if (data.translated_transcript) {
+          setTranslatedTranscript(data.translated_transcript)
+          setTranscript(data.translated_transcript)
+          setEditedScript(data.translated_transcript)
+        }
+        if (data.original_title) setOriginalTitle(data.original_title)
+        if (data.original_caption) setOriginalCaption(data.original_caption)
+        if (data.original_transcript) setOriginalTranscript(data.original_transcript)
+        setViewLanguage('tr')
+        setTranslateMessage('✨ Gönderi başlığı, açıklaması ve deşifresi Türkçeye çevrildi!')
+        setTimeout(() => setTranslateMessage(null), 4000)
+
+        if (onItemUpdated) {
+          onItemUpdated({
+            ...item,
+            title: data.translated_title || item.title,
+            description: data.translated_caption || item.description,
+            transcript: data.translated_transcript || item.transcript,
+            actionable_data: {
+              ...((item.actionable_data as any) || {}),
+              original_title: data.original_title,
+              original_caption: data.original_caption,
+              original_transcript: data.original_transcript,
+              translated_title: data.translated_title,
+              translated_caption: data.translated_caption,
+              translated_transcript: data.translated_transcript,
+              is_translated: true,
+            },
+          })
+        }
+      } else {
+        setTranslateMessage(data.error || 'Çeviri yapılamadı')
+      }
+    } catch {
+      setTranslateMessage('Bağlantı hatası oluştu')
+    } finally {
+      setIsTranslating(false)
+    }
+  }
 
 
   // 1. Assign collection
@@ -540,10 +629,10 @@ function ItemDetailModalContent({
       if (onItemUpdated) {
         onItemUpdated({ ...item, transcript: editedScript.trim() })
       }
-      setTranscribeMessage('✨ Script başarıyla güncellendi ve kaydedildi!')
+      setTranscribeMessage('✨ Deşifre başarıyla güncellendi ve kaydedildi!')
       setTimeout(() => setTranscribeMessage(null), 4000)
     } catch {
-      setTranscribeMessage('Script kaydedilirken hata oluştu')
+      setTranscribeMessage('Deşifre kaydedilirken hata oluştu')
     }
   }
 
@@ -814,10 +903,75 @@ function ItemDetailModalContent({
               </div>
             </div>
 
-            {/* 2. Title */}
-            <h2 className="text-base sm:text-lg md:text-xl font-bold text-white leading-snug">
-              {cleanTitle}
-            </h2>
+            {/* 2. Title & Global Language Switcher */}
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <h2 className="text-base sm:text-lg md:text-xl font-bold text-white leading-snug flex-1">
+                  {displayTitle}
+                </h2>
+
+                {/* Translation Controls */}
+                {isForeignSource && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {hasFullTranslation ? (
+                      <div className="flex items-center bg-zinc-900/90 p-0.5 rounded-xl border border-white/10 text-xs shadow-inner">
+                        <button
+                          type="button"
+                          onClick={() => setViewLanguage('tr')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            viewLanguage === 'tr'
+                              ? 'bg-purple-600 text-white shadow-sm'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          🇹🇷 Türkçe
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewLanguage('orig')}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                            viewLanguage === 'orig'
+                              ? 'bg-zinc-700 text-white shadow-sm'
+                              : 'text-zinc-400 hover:text-white'
+                          }`}
+                          title="Orijinal yabancı dildeki tüm metinleri göster"
+                        >
+                          <Globe className="w-3 h-3 text-cyan-400" />
+                          <span>Orijinalini Göster</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleTranslatePost}
+                        disabled={isTranslating}
+                        className="px-2.5 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white text-xs font-bold border border-purple-500/40 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                        title="Yapay zeka ile başlık, açıklama ve deşifreyi Türkçeye çevir"
+                      >
+                        {isTranslating ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin text-purple-300" />
+                            <span>Çevriliyor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="w-3 h-3 text-cyan-400" />
+                            <span>🇹🇷 Türkçeye Çevir</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {translateMessage && (
+                <div className="text-xs text-purple-200 bg-purple-950/50 p-2 rounded-xl border border-purple-700/50 animate-fade-in flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+                  <span>{translateMessage}</span>
+                </div>
+              )}
+            </div>
 
             {/* 3. Segmented 3-Tab Navigation Bar */}
             <div className="flex items-center gap-1 p-1 bg-zinc-900/90 rounded-2xl border border-white/10 shadow-inner">
@@ -831,7 +985,7 @@ function ItemDetailModalContent({
                 }`}
               >
                 <Mic2 className="w-3.5 h-3.5" />
-                <span>Döküm (Script)</span>
+                <span>Video Deşifresi</span>
                 {transcript ? (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 ) : isTranscribing ? (
@@ -866,7 +1020,7 @@ function ItemDetailModalContent({
               </button>
             </div>
 
-            {/* ── TAB 1: SCRIPT & DÖKÜM ────────────────────────────── */}
+            {/* ── TAB 1: DEŞİFRE (TRANSCRIPTION) ────────────────────── */}
             {activeTab === 'script' && (
               <div className="space-y-3.5 animate-fade-in">
                 {/* Hidden File Input for Direct Audio/Video Upload */}
@@ -885,11 +1039,11 @@ function ItemDetailModalContent({
                       <div className="flex items-center gap-2 text-xs font-bold text-purple-300">
                         <Volume2 className="w-4 h-4 text-purple-400 shrink-0" />
                         <span>
-                          {scriptLang === 'orig' ? '🌐 Orijinal İçerik / Konuşma Metni' : '🇹🇷 Video Ses Dökümü (Script)'}
+                          {viewLanguage === 'orig' ? '🌐 Orijinal Ses Deşifresi' : '🇹🇷 Video Ses Deşifresi'}
                         </span>
                         {hasOriginalOption && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-900/50 text-purple-300 border border-purple-700/40 font-semibold">
-                            {scriptLang === 'orig' ? 'Orijinal' : 'Türkçe'}
+                            {viewLanguage === 'orig' ? 'Orijinal Metin' : 'Türkçe Deşifre'}
                           </span>
                         )}
                       </div>
@@ -906,9 +1060,9 @@ function ItemDetailModalContent({
                         <div className="flex items-center bg-black/70 p-0.5 rounded-xl border border-white/10 text-xs shadow-inner">
                           <button
                             type="button"
-                            onClick={() => setScriptLang('tr')}
+                            onClick={() => setViewLanguage('tr')}
                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                              scriptLang === 'tr'
+                              viewLanguage === 'tr'
                                 ? 'bg-purple-600 text-white shadow-sm'
                                 : 'text-zinc-400 hover:text-white'
                             }`}
@@ -917,9 +1071,9 @@ function ItemDetailModalContent({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setScriptLang('orig')}
+                            onClick={() => setViewLanguage('orig')}
                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer ${
-                              scriptLang === 'orig'
+                              viewLanguage === 'orig'
                                 ? 'bg-zinc-700 text-white shadow-sm'
                                 : 'text-zinc-400 hover:text-white'
                             }`}
@@ -936,7 +1090,7 @@ function ItemDetailModalContent({
                         onClick={() => handleTranscribeVideo()}
                         disabled={isTranscribing}
                         className="px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-purple-600/25 disabled:opacity-50 cursor-pointer"
-                        title="Videonun sesini dinle ve script olarak dök"
+                        title="Videonun sesini dinle ve deşifre et"
                       >
                         {isTranscribing ? (
                           <>
@@ -946,7 +1100,7 @@ function ItemDetailModalContent({
                         ) : (
                           <>
                             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                            <span>{transcript ? 'Yeniden Dinle' : 'Videoyu Dinle & Script Çıkar'}</span>
+                            <span>{transcript ? 'Yeniden Deşifre Et' : 'Videoyu Dinle & Deşifre Et'}</span>
                           </>
                         )}
                       </button>
@@ -1015,7 +1169,7 @@ function ItemDetailModalContent({
                           ) : (
                             <>
                               <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
-                              <span>Düzenle</span>
+                              <span>Deşifreyi Düzenle</span>
                             </>
                           )}
                         </button>
@@ -1031,7 +1185,7 @@ function ItemDetailModalContent({
                         type="text"
                         value={scriptSearchQuery}
                         onChange={(e) => setScriptSearchQuery(e.target.value)}
-                        placeholder="Transkript içinde kelime veya konu ara..."
+                        placeholder="Deşifre içinde kelime veya konu ara..."
                         className="w-full pl-9 pr-8 py-1.5 rounded-xl bg-black/50 border border-white/10 text-xs text-white placeholder:text-zinc-500 outline-none focus:border-purple-500 transition-colors"
                       />
                       {scriptSearchQuery && (
@@ -1109,7 +1263,7 @@ function ItemDetailModalContent({
                     </div>
                     <div>
                       <h5 className="text-sm font-bold text-white">Gemini Video Sesini Çözümlüyor...</h5>
-                      <p className="text-xs text-purple-300/80 mt-1">Konuşmalar yüksek doğrulukla deşifre edilip script olarak dökülüyor.</p>
+                      <p className="text-xs text-purple-300/80 mt-1">Konuşmalar yüksek doğrulukla dinlenip Türkçe deşifre metnine aktarılıyor.</p>
                     </div>
                   </div>
                 )}
@@ -1123,7 +1277,7 @@ function ItemDetailModalContent({
                         onChange={(e) => setEditedScript(e.target.value)}
                         rows={10}
                         className="w-full p-4 rounded-2xl bg-black/70 border border-purple-500/50 text-xs text-white leading-relaxed font-sans outline-none focus:ring-1 focus:ring-purple-400 resize-y"
-                        placeholder="Video konuşma metnini düzenleyin..."
+                        placeholder="Video konuşma ve deşifre metnini düzenleyin..."
                       />
                       <div className="flex justify-end gap-2">
                         <button
@@ -1144,15 +1298,15 @@ function ItemDetailModalContent({
                     </div>
                   ) : (
                     <div className="p-4 rounded-2xl bg-black/50 border border-purple-900/30 text-xs text-purple-100/90 leading-relaxed max-h-[380px] overflow-y-auto whitespace-pre-wrap font-sans selection:bg-purple-500/30 space-y-2 scrollbar-thin">
-                      {scriptLang === 'orig' && (
+                      {viewLanguage === 'orig' && (
                         <div className="p-2.5 mb-2 rounded-xl bg-cyan-950/40 border border-cyan-800/50 text-[11px] text-cyan-200 flex items-center justify-between">
                           <span className="flex items-center gap-1.5 font-medium">
                             <Globe className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            <span>Orijinal Dildeki Metin / Konuşma Dökümü</span>
+                            <span>Orijinal Dildeki Deşifre / Konuşma Metni</span>
                           </span>
                           <button
                             type="button"
-                            onClick={() => setScriptLang('tr')}
+                            onClick={() => setViewLanguage('tr')}
                             className="text-[10px] text-cyan-300 hover:text-white font-semibold underline cursor-pointer"
                           >
                             🇹🇷 Türkçe Çeviriyi Göster
@@ -1192,7 +1346,7 @@ function ItemDetailModalContent({
                         className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2 transition-all cursor-pointer"
                       >
                         <Sparkles className="w-4 h-4 text-amber-300" />
-                        <span>Videoyu Dinle & Script Çıkar</span>
+                        <span>Videoyu Dinle & Deşifre Et</span>
                       </button>
                     </div>
                   </div>
@@ -1439,14 +1593,64 @@ function ItemDetailModalContent({
                   )
                 })()}
 
-                {/* Original Caption */}
-                {item.description && (
-                  <div className="space-y-1.5 pt-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                      Orijinal Açıklama
-                    </h4>
-                    <div className="p-3 rounded-xl bg-zinc-900/60 border border-white/10 text-xs text-zinc-300 leading-relaxed max-h-36 overflow-y-auto whitespace-pre-wrap">
-                      {item.description}
+                {/* Caption / Description Section */}
+                {(item.description || translatedCaption) && (
+                  <div className="space-y-2 pt-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-zinc-400" />
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                          {viewLanguage === 'orig' ? 'Orijinal Açıklama' : (translatedCaption ? 'Açıklama (Türkçe)' : 'Gönderi Açıklaması')}
+                        </h4>
+                      </div>
+
+                      {/* Language Toggle for Caption */}
+                      {hasFullTranslation ? (
+                        <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-lg p-0.5 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setViewLanguage('tr')}
+                            className={`px-2 py-0.5 rounded font-medium transition-all ${
+                              viewLanguage === 'tr'
+                                ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-sm'
+                                : 'text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            🇹🇷 Türkçe
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewLanguage('orig')}
+                            className={`px-2 py-0.5 rounded font-medium transition-all ${
+                              viewLanguage === 'orig'
+                                ? 'bg-white/20 text-white shadow-sm font-semibold'
+                                : 'text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            🌐 Orijinal
+                          </button>
+                        </div>
+                      ) : (
+                        isForeignSource && (
+                          <button
+                            type="button"
+                            onClick={handleTranslatePost}
+                            disabled={isTranslating}
+                            className="px-2.5 py-1 rounded-lg bg-red-950/40 hover:bg-red-900/50 border border-red-700/50 text-[11px] font-medium text-red-200 flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {isTranslating ? (
+                              <Loader2 className="w-3 h-3 animate-spin text-red-400" />
+                            ) : (
+                              <Languages className="w-3 h-3 text-red-400" />
+                            )}
+                            <span>Türkçeye Çevir</span>
+                          </button>
+                        )
+                      )}
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-zinc-900/70 border border-white/10 text-xs text-zinc-200 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap selection:bg-purple-500 selection:text-white">
+                      {displayCaption}
                     </div>
                   </div>
                 )}

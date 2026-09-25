@@ -71,11 +71,11 @@ export async function POST(request: Request) {
 
         const prompt = `Aşağıdaki ses/video kaydını dinle ve içindeki konuşmaları döküme aktar.
 Kurallar:
-1. Videodaki konuşma yabancı dilde ise (İngilizce vb.), konuşmaları akıcı, doğal ve eksiksiz bir şekilde TÜRKÇE "Video Scripti / Konuşma Dökümü" olarak yaz.
-Ardından tam altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına videoda duyulan orijinal yabancı dildeki konuşma dökümünü yaz.
-2. Videodaki konuşma zaten Türkçe ise, doğrudan Türkçe konuşma scriptini yaz (ayraç ekleme).
+1. Videodaki konuşma yabancı dilde ise (İngilizce vb.), konuşmaları akıcı, doğal ve eksiksiz bir şekilde TÜRKÇE "Video Deşifresi / Konuşma Dökümü" olarak yaz.
+Ardından tam altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına videoda duyulan orijinal yabancı dildeki konuşma deşifresini yaz.
+2. Videodaki konuşma zaten Türkçe ise, doğrudan Türkçe konuşma deşifresini yaz (ayraç ekleme).
 3. Varsa adımları, ipuçlarını veya tarif listesini paragraflar halinde düzenle.
-4. Sadece konuşma scripti metnini yaz, başına veya sonuna ekstra açıklama ekleme.`
+4. Sadece konuşma deşifresi metnini yaz, başına veya sonuna ekstra açıklama ekleme.`
 
         const result = await model.generateContent([
           prompt,

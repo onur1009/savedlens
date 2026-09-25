@@ -142,7 +142,7 @@ export default function FilterBar({
           <span className="hidden sm:inline">Favoriler</span>
         </button>
 
-        {/* With Transcript (Script Hazır) Quick Toggle */}
+        {/* With Transcript (Deşifre Hazır) Quick Toggle */}
         {onToggleWithTranscript && (
           <button
             type="button"
@@ -152,11 +152,11 @@ export default function FilterBar({
                 ? 'bg-gradient-to-r from-purple-950/80 to-indigo-950/80 text-purple-200 border-purple-500/60 shadow-[0_0_16px_rgba(168,85,247,0.35)] ring-1 ring-purple-400/50'
                 : 'bg-[#0d111c]/90 text-zinc-400 border-white/[0.08] hover:text-purple-300 hover:border-purple-500/30'
             }`}
-            title="Yalnızca ses dökümü (script) hazır olan videoları filtrele"
+            title="Yalnızca ses deşifresi hazır olan videoları filtrele"
           >
             {onlyWithTranscript && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
             <Mic2 className={`w-3.5 h-3.5 ${onlyWithTranscript ? 'text-purple-300' : 'text-zinc-400'}`} />
-            <span className="hidden sm:inline">Scriptli</span>
+            <span className="hidden sm:inline">Deşifreli</span>
           </button>
         )}
 

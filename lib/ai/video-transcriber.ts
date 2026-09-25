@@ -143,11 +143,11 @@ async function transcribeFromDirectAudioUrl(url: string, apiKeyOverride?: string
 
         const prompt = `Aşağıdaki ses/video kaydını dinle ve içindeki konuşmaları döküme aktar.
 Kurallar:
-1. Videodaki konuşma yabancı dilde ise (İngilizce vb.), konuşmaları akıcı, doğal ve eksiksiz bir şekilde TÜRKÇE "Video Scripti / Konuşma Dökümü" olarak yaz.
-Ardından tam altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına videoda duyulan orijinal yabancı dildeki konuşma dökümünü yaz.
-2. Videodaki konuşma zaten Türkçe ise, doğrudan Türkçe konuşma scriptini yaz (ayraç ekleme).
+1. Videodaki konuşma yabancı dilde ise (İngilizce vb.), konuşmaları akıcı, doğal ve eksiksiz bir şekilde TÜRKÇE "Video Deşifresi / Konuşma Dökümü" olarak yaz.
+Ardından tam altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına videoda duyulan orijinal yabancı dildeki konuşma deşifresini yaz.
+2. Videodaki konuşma zaten Türkçe ise, doğrudan Türkçe konuşma deşifresini yaz (ayraç ekleme).
 3. Varsa adımları, ipuçlarını veya tarif listesini paragraflar halinde düzenle.
-4. Sadece konuşma scripti metnini yaz, başına veya sonuna ekstra selamlama/açıklama ekleme.`
+4. Sadece deşifre metnini yaz, başına veya sonuna ekstra selamlama/açıklama ekleme.`
 
         const mime = contentType.includes('video') ? 'video/mp4' : 'audio/mp3'
         const result = await model.generateContent([
@@ -225,21 +225,21 @@ async function generateScriptFromContext(
         },
       })
 
-      const prompt = `Sen sosyal medya videolarının ses ve konuşma metinlerini (video script / voiceover) oluşturan uzman bir yapay zekasın.
+      const prompt = `Sen sosyal medya videolarının ses ve konuşma metinlerini (video ses deşifresi / voiceover dökümü) oluşturan uzman bir yapay zekasın.
 
-Aşağıdaki ${platform || 'sosyal medya'} video gönderisinin başlığı ve açıklaması verilmiştir. Bu bilgilere dayanarak videoda konuşmacının anlattığı TAM KONUŞMA SCRİPTİNİ (Diyalog / Sesli Anlatım / Voiceover Metni) yaz.
+Aşağıdaki ${platform || 'sosyal medya'} video gönderisinin başlığı ve açıklaması verilmiştir. Bu bilgilere dayanarak videoda konuşmacının anlattığı TAM KONUŞMA DEŞİFRESİNİ (Diyalog / Sesli Anlatım / Konuşma Metni) yaz.
 
 GÖNDERİ BAŞLIĞI: ${title || 'Video Gönderisi'}
 GÖNDERİ AÇIKLAMASI: ${caption || 'Açıklama bulunmuyor'}
 
 KURALLAR:
 1. Videoda sanki içerik üreticisi konuşuyormuş gibi doğal, akıcı ve birinci tekil şahıs ("ben", "yapıyoruz", "gösteriyorum") veya samimi anlatıcı diliyle yaz.
-2. ÇOK ÖNEMLİ: Eğer gönderi başlığı veya açıklaması yabancı bir dildeyse (İngilizce vb.), MUTLAKA VE KESİNLİKLE TÜRKÇEYE ÇEVİREREK akıcı ve doğal bir Türkçe seslendirme scripti oluştur.
-3. Eğer içerik yabancı dildeyse, Türkçe scriptin hemen altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına orijinal yabancı dildeki konuşma/açıklama metnini yaz.
-4. Eğer içerik zaten Türkçe ise, doğrudan Türkçe scripti yaz ve ayraç ekleme.
+2. ÇOK ÖNEMLİ: Eğer gönderi başlığı veya açıklaması yabancı bir dildeyse (İngilizce vb.), MUTLAKA VE KESİNLİKLE TÜRKÇEYE ÇEVİREREK akıcı ve doğal bir Türkçe seslendirme deşifresi oluştur.
+3. Eğer içerik yabancı dildeyse, Türkçe deşifrenin hemen altına "---ORIGINAL_TRANSCRIPT---" ayracını ekle ve bu ayracın altına orijinal yabancı dildeki konuşma/açıklama metnini yaz.
+4. Eğer içerik zaten Türkçe ise, doğrudan Türkçe deşifreyi yaz ve ayraç ekleme.
 5. Açıklamadaki tüm püf noktalarını, malzemeleri veya adımları konuşma diline yedir.
 6. Paragraflara ayırarak okunaklı yap.
-7. Başlık veya ekstra meta bilgi ekleme, doğrudan konuşma scriptini başlat.`
+7. Başlık veya ekstra meta bilgi ekleme, doğrudan konuşma deşifresini başlat.`
 
       const result = await model.generateContent(prompt)
       const rawText = result.response.text()?.trim()

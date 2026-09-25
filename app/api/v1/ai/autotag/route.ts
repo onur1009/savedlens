@@ -71,10 +71,39 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Run structured data extraction utilizing the script data!
-    const result = await extractStructuredData(titleText || null, contentText || null, transcriptText)
+    // 2.5. Full Content Translation (Translate title, caption, and deşifre into Turkish if foreign)
+    let translatedTitle = titleText || bmData?.title || null
+    let translatedCaption = contentText || bmData?.caption || null
+    let translatedTranscript = transcriptText
 
-    // 4. Run smart categorization with Gemini AI using transcript data
+    try {
+      const { isForeignText } = await import('@/lib/ai/video-transcriber')
+      if (isForeignText(translatedCaption) || isForeignText(translatedTitle) || isForeignText(translatedTranscript)) {
+        const { translateBookmarkContent } = await import('@/lib/ai/translator')
+        const trResult = await translateBookmarkContent({
+          title: translatedTitle,
+          caption: translatedCaption,
+          transcript: translatedTranscript,
+          platform: bmData?.platform,
+        })
+        translatedTitle = trResult.translatedTitle || translatedTitle
+        translatedCaption = trResult.translatedCaption || translatedCaption
+        if (trResult.translatedTranscript) {
+          translatedTranscript = trResult.translatedTranscript
+        }
+        isTranslatedContent = true
+        if (!originalTranscriptText) {
+          originalTranscriptText = trResult.originalTranscript || transcriptText
+        }
+      }
+    } catch (trError) {
+      console.warn('[autotag] Translation warning:', trError)
+    }
+
+    // 3. Run structured data extraction utilizing the translated data & script!
+    const result = await extractStructuredData(translatedTitle, translatedCaption, translatedTranscript || transcriptText)
+
+    // 4. Run smart categorization with Gemini AI using translated data
     let finalCategory = result.category
     let finalSummary = result.summary
     let finalTags = result.tags
@@ -90,12 +119,12 @@ export async function POST(request: Request) {
           .eq('user_id', bmData.user_id)
 
         const plan = await planSmartCategoryWithAI(
-          titleText || bmData.title,
-          contentText || bmData.caption,
+          translatedTitle || bmData.title,
+          translatedCaption || bmData.caption,
           bmData.author_username || bmData.author_name,
           userCols || [],
           parsed.data.bookmark_id,
-          transcriptText
+          translatedTranscript || transcriptText
         )
 
         finalCategory = plan.category
@@ -110,7 +139,12 @@ export async function POST(request: Request) {
 
     const mergedActionableData = {
       ...(typeof result.actionable_data === 'object' && result.actionable_data !== null ? result.actionable_data : {}),
-      ...(originalTranscriptText ? { original_transcript: originalTranscriptText } : {}),
+      original_title: titleText || bmData?.title || null,
+      original_caption: contentText || bmData?.caption || null,
+      original_transcript: originalTranscriptText,
+      translated_title: translatedTitle,
+      translated_caption: translatedCaption,
+      translated_transcript: translatedTranscript,
       is_translated: isTranslatedContent,
     }
 
@@ -127,10 +161,10 @@ export async function POST(request: Request) {
             ai_tags: finalTags,
             extractors: {
               ...result.extractors,
-              transcript: Boolean(transcriptText),
+              transcript: Boolean(translatedTranscript || transcriptText),
             },
             actionable_data: mergedActionableData,
-            transcript: transcriptText,
+            transcript: translatedTranscript || transcriptText,
             updated_at: new Date().toISOString(),
           })
           .eq('id', parsed.data.bookmark_id)
@@ -144,12 +178,14 @@ export async function POST(request: Request) {
       category: finalCategory,
       summary: finalSummary,
       tags: finalTags,
-      transcript: transcriptText,
+      transcript: translatedTranscript || transcriptText,
       original_transcript: originalTranscriptText,
+      translated_title: translatedTitle,
+      translated_caption: translatedCaption,
       is_translated: isTranslatedContent,
       extractors: {
         ...result.extractors,
-        transcript: Boolean(transcriptText),
+        transcript: Boolean(translatedTranscript || transcriptText),
       },
       actionable_data: mergedActionableData,
     })
